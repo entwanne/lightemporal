@@ -19,7 +19,7 @@ class Workflow(pydantic.BaseModel):
     id: UUID
     name: str
     input: str
-    status: WorkflowStatus = WorkflowStatus.STOPPED
+    status: WorkflowStatus = WorkflowStatus.RUNNING
 
 
 class ActivityResult(pydantic.BaseModel):

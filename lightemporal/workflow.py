@@ -4,6 +4,10 @@ import pydantic
 
 from .backend import DB
 from .models import param_types, Workflow, WorkflowStatus
+from .repos import WorkflowRepository
+
+
+workflows = WorkflowRepository(DB)
 
 
 class workflow:
@@ -16,6 +20,7 @@ class workflow:
         self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
 
     def __call__(self, *args, **kwargs):
+        exc = False
         try:
             bound = self.sig.bind(*args, **kwargs)
             args, kwargs = bound.args, bound.kwargs
@@ -23,26 +28,16 @@ class workflow:
             #print(repr(kwargs), kwargs.model_dump())
             #print(b.args, b.kwargs)
             #user_list_adapter = pydantic.TypeAdapter(tuple[tuple[str]])
-            input_str = self.input_adapter.dump_json((args, kwargs))
-            #DB.cursor.execute('SELECT * FROM workflows WHERE name=? AND input=? AND status="FAILED"', (self.name, input_str))
-            DB.cursor.execute('SELECT * FROM workflows WHERE name=? AND input=?', (self.name, input_str))
-            #DB.cursor.execute('SELECT * FROM workflows')
-            w = DB.cursor.fetchone()
-            if w is None:
-                w = Workflow(name=self.name, input=input_str, status=WorkflowStatus.RUNNING)
-                DB.cursor.execute('INSERT INTO workflows(id, name, input, status) VALUES (?, ?, ?, ?)', (w.id, w.name, w.input, w.status.value))
-                DB.db.commit()
-            else:
-                print('!!!', w)
-                w_id, w_name, w_input, w_status = w
-                w = Workflow(id=w_id, name=w_name, input=w_input, status=w_status)
-                print(repr(w))
-                pass
+            input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+            workflow = workflows.get_or_create(self.name, input_str)
+            print(workflow)
             return self.func(*args, **kwargs.model_dump())
         except Exception:
+            exc = True
             raise
-        else:
-            pass
+        finally:
+            if not exc:
+                workflows.complete(workflow)
 
 
 class activity:

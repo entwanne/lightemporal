@@ -1,28 +1,60 @@
 import atexit
-import sqlite3
+import json
+from contextlib import contextmanager
+from pathlib import Path
+
+from .lock import FileLock
 
 
 class Backend:
     def __init__(self, db_path='lightemporal.db'):
-        self.db_path = db_path
+        self.db_path = Path(db_path)
+        self.write_lock = FileLock(self.db_path.with_name(self.db_path.name + '.lock'))
+
         self.db = None
-        self.cursor = None
+
+    def reload(self):
+        if not self.db_path.exists():
+            with self.write_lock:
+                if not self.db_path.exists():
+                    self.db_path.write_text('{}')
+        with self.db_path.open() as f:
+            self.db = json.load(f)
+
+    def commit(self):
+        with self.write_lock:
+            with self.db_path.open('w') as f:
+                json.dump(self.db, f)
+
+    @property
+    @contextmanager
+    def atomic(self):
+        with self.write_lock:
+            try:
+                self.reload()
+                yield
+            finally:
+                self.commit()
 
     def __enter__(self):
-        self.db = sqlite3.connect(self.db_path)
-        self.cursor = self.db.cursor()
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS workflows(id, name, input, status)')
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS activity_results(workflow_id, name, input, output)')
-        self.db.commit()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        self.cursor.close()
-        self.db.close()
+        self.db = None
 
-    def get_workflow(self, id: str):
-        #self.cursor.execute('SELECT ')
-        pass
+    def get(self, table, id):
+        self.reload()
+        return self.db.get(table, {})[id]
+
+    def list(self, table, **filters):
+        self.reload()
+        for row in self.db.get(table, {}).values():
+            if all(row.get(key) == value for key, value in filters.items()):
+                yield row
+
+    def set(self, table, row):
+        with self.atomic:
+            self.db.setdefault(table, {})[row['id']] = row
 
 
 backend_ctx = Backend()
