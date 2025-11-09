@@ -18,10 +18,16 @@ class Refund(pydantic.BaseModel):
 
 
 @workflow
+def payment_workflow(payment_id: str):
+    raise RuntimeError('Do not call as a workflow')
+
+
+@workflow
 def refund_payment(payment_id: str, amount: int):
-    refund = init_refund(payment_id, amount)
-    print(refund)
-    raise ValueError
+    with payment_workflow.use(payment_id):
+        refund = init_refund(payment_id, amount)
+        print(refund)
+        raise ValueError
 
 
 @activity

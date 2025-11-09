@@ -1,5 +1,6 @@
 import contextvars
 import inspect
+from contextlib import contextmanager
 
 import pydantic
 
@@ -25,29 +26,40 @@ class workflow:
 
     def __call__(self, *args, **kwargs):
         exc = False
-        workflow = None
+        bound = self.sig.bind(*args, **kwargs)
+        args, kwargs = bound.args, bound.kwargs
+        kwargs = self.kwarg_types(**kwargs)
+        #print(repr(kwargs), kwargs.model_dump())
+        #print(b.args, b.kwargs)
+        #user_list_adapter = pydantic.TypeAdapter(tuple[tuple[str]])
+        input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+        workflow = workflows.get_or_create(self.name, input_str)
+        self.currents.set(self.currents.get() + (workflow.id,))
+
         try:
-            bound = self.sig.bind(*args, **kwargs)
-            args, kwargs = bound.args, bound.kwargs
-            kwargs = self.kwarg_types(**kwargs)
-            #print(repr(kwargs), kwargs.model_dump())
-            #print(b.args, b.kwargs)
-            #user_list_adapter = pydantic.TypeAdapter(tuple[tuple[str]])
-            input_str = self.input_adapter.dump_json((args, kwargs)).decode()
-            workflow = workflows.get_or_create(self.name, input_str)
-            self.currents.set(self.currents.get() + (workflow.id,))
             return self.func(*args, **kwargs.model_dump())
         except Exception:
             exc = True
             raise
         finally:
-            if workflow is not None:
-                assert self.currents.get()[-1] == workflow.id
-                self.currents.set(self.currents.get()[:-1])
+            assert self.currents.get()[-1] == workflow.id
+            self.currents.set(self.currents.get()[:-1])
             if exc:
                 workflows.failed(workflow)
             else:
                 workflows.complete(workflow)
+
+    @contextmanager
+    def use(self, *args, **kwargs):
+        bound = self.sig.bind(*args, **kwargs)
+        args, kwargs = bound.args, bound.kwargs
+        kwargs = self.kwarg_types(**kwargs)
+        input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+        workflow = workflows.get_or_create(self.name, input_str)
+        try:
+            yield
+        finally:
+            workflows.complete(workflow)
 
 
 class activity:
