@@ -34,6 +34,7 @@ class workflow:
         #user_list_adapter = pydantic.TypeAdapter(tuple[tuple[str]])
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
         workflow = workflows.get_or_create(self.name, input_str)
+        print(repr(workflow))
         self.currents.set(self.currents.get() + (workflow.id,))
 
         try:
@@ -69,6 +70,7 @@ class activity:
         self.sig = inspect.signature(func)
         self.arg_types, self.kwarg_types = param_types(func)
         self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
+        self.output_adapter = pydantic.TypeAdapter(self.sig.return_annotation)
 
     def __call__(self, *args, **kwargs):
         if not workflow.currents.get():
@@ -83,8 +85,7 @@ class activity:
 
         activity = activities.may_find_one(workflow_id, self.name, input_str)
         if activity is not None:
-            import json
-            return json.loads(activity.output)
+            return self.output_adapter.validate_json(activity.output)
 
         try:
             ret = self.func(*args, **kwargs.model_dump())
@@ -94,5 +95,6 @@ class activity:
             raise
         finally:
             if not exc:
-                activity = Activity(workflow_id=workflow_id, name=self.name, input=input_str, output='{}')
+                output_str = self.output_adapter.dump_json(ret).decode()
+                activity = Activity(workflow_id=workflow_id, name=self.name, input=input_str, output=output_str)
                 activities.save(activity)
