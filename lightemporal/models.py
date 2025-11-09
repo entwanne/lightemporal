@@ -22,7 +22,8 @@ class Workflow(pydantic.BaseModel):
     status: WorkflowStatus = WorkflowStatus.RUNNING
 
 
-class ActivityResult(pydantic.BaseModel):
+class Activity(pydantic.BaseModel):
+    id: UUID
     workflow_id: UUID
     name: str
     input: str

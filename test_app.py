@@ -19,11 +19,18 @@ class Refund(pydantic.BaseModel):
 
 @workflow
 def refund_payment(payment_id: str, amount: int):
-    pass
+    refund = init_refund(payment_id, amount)
+    print(refund)
+    raise ValueError
 
 
 @activity
-def rebate_amount(refund: str, amount: int) -> int:
+def init_refund(payment_id: str, amount: int):
+    return Refund(payment_id=payment_id, requested=amount)
+
+
+@activity
+def rebate_amount(refund_id: str, amount: int) -> int:
     #amount = 
     pass
 
