@@ -70,6 +70,7 @@ def init_refund(payment_id: str, amount: int) -> str:
 
 @activity
 def apply_rebate(refund_id: str) -> int:
+    print('Rebate')
     refund = refunds.get(refund_id)
     print(repr(refund))
     if refund.rebate_amount > 0 or refund.return_amount > 0:
@@ -86,6 +87,7 @@ def apply_rebate(refund_id: str) -> int:
 
 @activity
 def apply_return(refund_id: str) -> int:
+    print('Return')
     refund = refunds.get(refund_id)
     print(repr(refund))
     if refund.return_amount > 0 or refund.requested_amount == refund.rebate_amount + refund.return_amount:

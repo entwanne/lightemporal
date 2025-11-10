@@ -7,19 +7,18 @@ class WorkflowRepository:
 
     def get_or_create(self, name: str, input: str, ok_stopped: bool = True) -> Workflow:
         with self.db.atomic:
-            for row in self.db.list('workflows', name=name, input=input):
+            for row in self.db.list('workflows', name=name, input=input, status='RUNNING'):
+                raise ValueError('Workflow is already running')
+
+            for row in self.db.list('workflows', name=name, input=input, status='STOPPED'):
                 workflow = Workflow.model_validate(row)
-                match workflow.status:
-                    case WorkflowStatus.STOPPED:
-                        if not ok_stopped:
-                            raise ValueError('Another stopped workflow already exists')
-                        workflow.status = WorkflowStatus.RUNNING
-                        self.db.set('workflows', workflow.model_dump(mode='json'))
-                        return workflow
-                    case WorkflowStatus.COMPLETED:
-                        continue
-                    case WorkflowStatus.RUNNING:
-                        raise ValueError('Workflow is already running')
+                if not ok_stopped:
+                    raise ValueError('Another stopped workflow already exists')
+                workflow.status = WorkflowStatus.RUNNING
+                self.db.set('workflows', workflow.model_dump(mode='json'))
+                return workflow
+                workflow = Workflow.model_validate(row)
+
             workflow = Workflow(name=name, input=input)
             self.db.set('workflows', workflow.model_dump(mode='json'))
             return workflow
