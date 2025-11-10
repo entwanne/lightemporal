@@ -1,9 +1,15 @@
+from collections.abc import Iterable
+
 from .models import Payment, Refund
 
 
 class PaymentRepository:
     def __init__(self, db):
         self.db = db
+
+    def list(self) -> Iterable[Payment]:
+        for row in self.db.list('payments'):
+            yield Payment.model_validate(row)
 
     def get(self, id: str) -> Payment:
         return Payment.model_validate(self.db.get('payments', id))
@@ -34,6 +40,10 @@ class PaymentRepository:
 class RefundRepository:
     def __init__(self, db):
         self.db = db
+
+    def list_for_payment(self, payment: Payment) -> Iterable[Refund]:
+        for row in self.db.list('refunds', payment_id=payment.id):
+            yield Refund.model_validate(row)
 
     def get(self, id: str) -> Refund:
         return Refund.model_validate(self.db.get('refunds', id))
