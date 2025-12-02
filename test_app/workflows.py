@@ -2,6 +2,7 @@ import random
 
 from lightemporal import activity, workflow
 from lightemporal.backend import DB
+from lightemporal.executor import sleep
 
 from .models import Payment, Refund
 from .repos import PaymentRepository, RefundRepository
@@ -16,12 +17,16 @@ def may_fail():
 
 
 @workflow
-def payment_workflow(payment_id: str):
+def payment_workflow(payment_id: str) -> None:
     raise RuntimeError('Do not call as a workflow')
 
 
 @workflow
 def issue_refund(payment_id: str, amount: int) -> str:
+    print('Sleeping for 5s')
+    sleep(5)
+    print('End sleep')
+
     if not check_payment_id(payment_id):
         return ''
     with payment_workflow.use(payment_id):
@@ -30,6 +35,10 @@ def issue_refund(payment_id: str, amount: int) -> str:
 
 @workflow
 def apply_refund(refund_id: str) -> int:
+    print('Sleeping for 5s')
+    sleep(5)
+    print('End sleep')
+
     payment_id = get_payment_id(refund_id)
     with payment_workflow.use(payment_id):
         rebate_amount = apply_rebate(refund_id)

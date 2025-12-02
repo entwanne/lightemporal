@@ -1,5 +1,7 @@
 import time
 
+from .workflow import activity
+
 # contexts to use for specific actions
 # if activity is being executed by a worker, sleep or wait signal should suspend the task on the worker until event has come
 # in direct executor mode (default), actions are just normal ones
@@ -8,13 +10,36 @@ import time
 # primitive could be a wait_for function that takes an event (TemporalEvent in case of sleep)
 
 class DirectExecutorContext:
-    def sleep(self, duration):
-        time.sleep(duration)
+    def call(self, workflow, *args, **kwargs):
+        return workflow(*args, **kwargs)
+
+    def suspend(self, timestamp):
+        time.sleep(max(timestamp - time.time(), 0))
 
 
-class WorkerExecutorContext:
-    def __init__(self):
-        pass
+class TaskExecutorContext:
+    def call(self, workflow, *args, **kwargs):
+        from tasks.queue import Q
+        Q.put(workflow, *args, **kwargs)
 
-    def sleep(self, duration):
-        raise KeyboardInterrupt
+    def suspend(self, timestamp):
+        from tasks.exceptions import Suspend
+        raise Suspend(timestamp=timestamp)
+
+
+CTX = DirectExecutorContext()
+
+
+@activity
+def _timestamp_for_duration(duration: int) -> float:
+    return time.time() + duration
+
+
+@activity
+def _sleep_until(timestamp: float) -> None:
+    if timestamp > time.time():
+        CTX.suspend(timestamp)
+
+
+def sleep(duration):
+    return _sleep_until(_timestamp_for_duration(duration))

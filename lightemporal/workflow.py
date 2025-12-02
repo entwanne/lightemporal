@@ -19,7 +19,8 @@ class workflow:
     def __init__(self, func):
         self.func = func
         self.name = func.__qualname__
-        self.sig = inspect.signature(func)
+        self.__name__ = func.__name__
+        self.sig = self.__signature__ = inspect.signature(func)
         #self.input_adapter = params_adapter(func)
         self.arg_types, self.kwarg_types = param_types(func)
         self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
