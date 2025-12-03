@@ -19,8 +19,8 @@ class DirectExecutorContext:
 
 class TaskExecutorContext:
     def call(self, workflow, *args, **kwargs):
-        from tasks.queue import Q
-        Q.put(workflow, *args, **kwargs)
+        from tasks.queue import ENV
+        ENV['Q'].put(workflow, *args, **kwargs)
 
     def suspend(self, timestamp):
         from tasks.exceptions import Suspend

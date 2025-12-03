@@ -1,4 +1,3 @@
-import atexit
 import heapq
 import json
 import time
@@ -6,6 +5,7 @@ from contextlib import contextmanager
 from functools import cache, cached_property
 from pathlib import Path
 
+from .context import ENV
 from .lock import FileLock
 
 
@@ -133,6 +133,4 @@ class Queue(_Table):
             )
 
 
-backend_ctx = Backend()
-DB = backend_ctx.__enter__()
-atexit.register(backend_ctx.__exit__, None, None, None)
+ENV.add_context('DB', Backend())

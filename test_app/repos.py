@@ -1,4 +1,7 @@
 from collections.abc import Iterable
+from functools import cached_property
+
+from lightemporal.backend import ENV
 
 from .models import Payment, Refund
 
@@ -56,3 +59,13 @@ class RefundRepository:
 
     def update(self, refund: Refund):
         self.db.set(refund.model_dump(mode='json'))
+
+
+class Repositories:
+    @cached_property
+    def payments(self):
+        return PaymentRepository(ENV['DB'])
+
+    @cached_property
+    def refunds(self):
+        return RefundRepository(ENV['DB'])

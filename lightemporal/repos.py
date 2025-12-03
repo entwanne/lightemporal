@@ -1,3 +1,6 @@
+from functools import cached_property
+
+from .context import ENV
 from .models import Workflow, WorkflowStatus, Activity
 
 
@@ -45,3 +48,13 @@ class ActivityRepository:
         for row in self.db.list(workflow_id=workflow_id, name=name, input=input):
             return Activity.model_validate(row)
         return None
+
+
+class Repositories:
+    @cached_property
+    def workflows(self):
+        return WorkflowRepository(ENV['DB'])
+
+    @cached_property
+    def activities(self):
+        return ActivityRepository(ENV['DB'])

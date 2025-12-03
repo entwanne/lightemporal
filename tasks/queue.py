@@ -4,7 +4,7 @@ import time
 
 import pydantic
 
-from lightemporal.backend import DB
+from lightemporal.backend import ENV
 from lightemporal.models import param_types
 
 
@@ -36,4 +36,4 @@ class FuncQueue:
         return func, args, kwargs.model_dump()
 
 
-Q = FuncQueue(DB, 'tasks')
+ENV['Q'] = FuncQueue(ENV['DB'], 'tasks')

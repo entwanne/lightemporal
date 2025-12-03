@@ -4,13 +4,10 @@ from contextlib import contextmanager
 
 import pydantic
 
-from .backend import DB
 from .models import param_types, Workflow, WorkflowStatus, Activity
-from .repos import WorkflowRepository, ActivityRepository
+from .repos import Repositories
 
-
-workflows = WorkflowRepository(DB)
-activities = ActivityRepository(DB)
+repos = Repositories()
 
 
 class workflow:
@@ -34,7 +31,7 @@ class workflow:
         args, kwargs = bound.args, bound.kwargs
         kwargs = self.kwarg_types(**kwargs)
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
-        workflow = workflows.get_or_create(self.name, input_str)
+        workflow = repos.workflows.get_or_create(self.name, input_str)
         print(repr(workflow))
         self.currents.set(self.currents.get() + (workflow.id,))
 
@@ -47,9 +44,9 @@ class workflow:
             assert self.currents.get()[-1] == workflow.id
             self.currents.set(self.currents.get()[:-1])
             if exc:
-                workflows.failed(workflow)
+                repos.workflows.failed(workflow)
             else:
-                workflows.complete(workflow)
+                repos.workflows.complete(workflow)
 
     @contextmanager
     def use(self, *args, **kwargs):
@@ -57,11 +54,11 @@ class workflow:
         args, kwargs = bound.args, bound.kwargs
         kwargs = self.kwarg_types(**kwargs)
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
-        workflow = workflows.get_or_create(self.name, input_str)
+        workflow = repos.workflows.get_or_create(self.name, input_str)
         try:
             yield
         finally:
-            workflows.complete(workflow)
+            repos.workflows.complete(workflow)
 
 
 class activity:
@@ -84,7 +81,7 @@ class activity:
         kwargs = self.kwarg_types(**kwargs)
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
 
-        activity = activities.may_find_one(workflow_id, self.name, input_str)
+        activity = repos.activities.may_find_one(workflow_id, self.name, input_str)
         if activity is not None:
             return self.output_adapter.validate_json(activity.output)
 
@@ -98,4 +95,4 @@ class activity:
             if not exc:
                 output_str = self.output_adapter.dump_json(ret).decode()
                 activity = Activity(workflow_id=workflow_id, name=self.name, input=input_str, output=output_str)
-                activities.save(activity)
+                repos.activities.save(activity)

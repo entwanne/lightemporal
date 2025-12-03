@@ -1,14 +1,14 @@
 import random
 
 from lightemporal import activity, workflow
-from lightemporal.backend import DB
 from lightemporal.executor import sleep
 
 from .models import Payment, Refund
-from .repos import PaymentRepository, RefundRepository
+from .repos import Repositories
 
-payments = PaymentRepository(DB)
-refunds = RefundRepository(DB)
+repos = Repositories()
+payments = repos.payments
+refunds = repos.refunds
 
 
 def may_fail():
