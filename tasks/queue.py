@@ -4,7 +4,7 @@ import time
 
 import pydantic
 
-from lightemporal.backend import ENV
+from lightemporal.context import ENV
 from lightemporal.models import param_types
 
 

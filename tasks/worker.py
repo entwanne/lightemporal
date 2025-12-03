@@ -1,7 +1,8 @@
 import time
 
+from lightemporal.context import ENV
+
 from .exceptions import Suspend
-from .queue import ENV
 from .shared import functions
 
 

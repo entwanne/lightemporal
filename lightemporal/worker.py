@@ -1,22 +1,43 @@
 import time
+from contextlib import contextmanager
 
-from lightemporal import executor
 from tasks.exceptions import Suspend
-from tasks.queue import ENV
+
+from .context import ENV
+from .workflow import Runner as DefaultRunner
+
+
+class Runner:
+    def call(self, workflow, *args, **kwargs):
+        ENV['Q'].put(workflow, *args, **kwargs)
+
+
+class TaskExecution:
+    def suspend(self, timestamp):
+        raise Suspend(timestamp=timestamp)
 
 
 def worker(**workflows):
-    executor.CTX = executor.TaskExecutorContext()
+    with ENV.new_layer():
+        ENV['EXEC'] = TaskExecution()
+        ENV['RUN'] = DefaultRunner()
 
-    while True:
-        queue = ENV['Q']
-        func, args, kwargs = queue.get(workflows)
-        print(func, args, kwargs)
-        try:
-            print(func(*args, **kwargs))
-        except Suspend as e:
-            print(f'{func.__name__} suspended for {round(max(e.timestamp - time.time(), 0))}s')
-            queue.call_at(func, e.timestamp, *args, **kwargs)
-        except Exception as e:
-            print(f'{func.__name__} failed: {e!r}')
-            queue.put(func, *args, **kwargs)
+        while True:
+            queue = ENV['Q']
+            func, args, kwargs = queue.get(workflows)
+            print(func, args, kwargs)
+            try:
+                print(func(*args, **kwargs))
+            except Suspend as e:
+                print(f'{func.__name__} suspended for {round(max(e.timestamp - time.time(), 0))}s')
+                queue.call_at(func, e.timestamp, *args, **kwargs)
+            except Exception as e:
+                print(f'{func.__name__} failed: {e!r}')
+                queue.put(func, *args, **kwargs)
+
+
+@contextmanager
+def task_runner():
+    with ENV.new_layer():
+        ENV['RUN'] = Runner()
+        yield

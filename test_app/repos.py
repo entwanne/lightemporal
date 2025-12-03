@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from functools import cached_property
 
-from lightemporal.backend import ENV
+from lightemporal.context import ENV
 
 from .models import Payment, Refund
 

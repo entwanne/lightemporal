@@ -4,10 +4,19 @@ from contextlib import contextmanager
 
 import pydantic
 
+from .context import ENV
 from .models import param_types, Workflow, WorkflowStatus, Activity
 from .repos import Repositories
 
 repos = Repositories()
+
+
+class Runner:
+    def call(self, workflow, *args, **kwargs):
+        return workflow._call(*args, **kwargs)
+
+
+ENV['RUN'] = Runner()
 
 
 class workflow:
@@ -26,6 +35,9 @@ class workflow:
         pass
 
     def __call__(self, *args, **kwargs):
+        ENV['RUN'].call(self, *args, **kwargs)
+
+    def _call(self, *args, **kwargs):
         exc = False
         bound = self.sig.bind(*args, **kwargs)
         args, kwargs = bound.args, bound.kwargs

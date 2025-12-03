@@ -1,9 +1,9 @@
 import sys
 
-from lightemporal.executor import TaskExecutorContext
-ctx = TaskExecutorContext()
+from lightemporal.worker import task_runner
 
 from .workflows import apply_refund
 
 #apply_refund(sys.argv[1])
-ctx.call(apply_refund, sys.argv[1])
+with task_runner():
+    apply_refund(sys.argv[1])
