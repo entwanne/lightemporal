@@ -1,9 +1,9 @@
 import sys
 
-from lightemporal.worker import task_runner
+from lightemporal.worker import runner_env
 
 from .workflows import apply_refund
 
 #apply_refund(sys.argv[1])
-with task_runner():
+with runner_env():
     print(apply_refund(sys.argv[1]))
