@@ -35,7 +35,7 @@ class workflow:
         pass
 
     def __call__(self, *args, **kwargs):
-        ENV['RUN'].call(self, *args, **kwargs)
+        return ENV['RUN'].call(self, *args, **kwargs)
 
     def _call(self, *args, **kwargs):
         exc = False

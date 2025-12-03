@@ -6,4 +6,4 @@ from .workflows import issue_refund
 
 #print(issue_refund(sys.argv[1], int(sys.argv[2])))
 with task_runner():
-    issue_refund(sys.argv[1], int(sys.argv[2]))
+    print(issue_refund(sys.argv[1], int(sys.argv[2])))

@@ -6,4 +6,4 @@ from .workflows import apply_refund
 
 #apply_refund(sys.argv[1])
 with task_runner():
-    apply_refund(sys.argv[1])
+    print(apply_refund(sys.argv[1]))
