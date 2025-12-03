@@ -12,27 +12,27 @@ from .lock import FileLock
 class Backend:
     def __init__(self, path='lightemporal.db'):
         self.path = Path(path)
-        self._write_lock = FileLock(self.path.with_name(self.path.name + '.lock'), reentrant=True)
+        self._lock = FileLock(self.path.with_name(self.path.name + '.lock'), reentrant=True)
 
         self._tables = None
 
     def reload(self):
-        if not self.path.exists():
-            with self._write_lock:
+        with self._lock:
+            if not self.path.exists():
                 if not self.path.exists():
                     self.path.write_text('{}')
-        with self.path.open() as f:
-            self._tables = json.load(f)
+            with self.path.open() as f:
+                self._tables = json.load(f)
 
     def commit(self):
-        with self._write_lock:
+        with self._lock:
             with self.path.open('w') as f:
                 json.dump(self._tables, f)
 
     @property
     @contextmanager
     def atomic(self):
-        with self._write_lock:
+        with self._lock:
             try:
                 self.reload()
                 yield
@@ -104,6 +104,10 @@ class Table(_Table):
     def set(self, row):
         with self.db.atomic:
             self.db._tables.setdefault(self.name, {})[row['id']] = row
+
+    def delete(self, id):
+        with self.db.atomic:
+            del self.db._tables.setdefault(self.name, {})[id]
 
 
 class Queue(_Table):
