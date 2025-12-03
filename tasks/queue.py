@@ -10,8 +10,7 @@ from lightemporal.models import param_types
 
 class FuncQueue:
     def __init__(self, db, queue_id):
-        self.db = db
-        self.table = f'queue.{queue_id}'
+        self.queue = db.queues[f'queue.{queue_id}']
 
     def put(self, func, /, *args, **kwargs):
         self.call_later(func, 0, *args, **kwargs)
@@ -26,25 +25,10 @@ class FuncQueue:
         args, kwargs = bound.args, kwarg_types(**bound.kwargs)
         adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
 
-        with self.db.atomic:
-            heapq.heappush(
-                self.db._tables.setdefault(self.table, []),
-                [timestamp, func.__name__, adapter.dump_python((args, kwargs), mode='json')],
-            )
+        self.queue.put([timestamp, func.__name__, adapter.dump_python((args, kwargs), mode='json')])
 
     def get(self, functions):
-        while True:
-            try:
-                with self.db.atomic:
-                    queue = self.db._tables[self.table]
-                    if queue[0][0] <= time.time():
-                        item = queue.pop(0)
-                        break
-            except (KeyError, IndexError):
-                pass
-            time.sleep(0.1)
-
-        _, func_name, input_ = item
+        _, func_name, input_ = self.queue.get_if(lambda item: item[0] <= time.time())
         func = functions[func_name]
         arg_types, kwarg_types = param_types(func)
         adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
