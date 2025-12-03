@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .context import ENV
 from .lock import FileLock
+from .utils import repeat_if_needed
 
 
 class Backend:
@@ -112,19 +113,15 @@ class Table(_Table):
 
 class Queue(_Table):
     def get_if(self, condition, blocking=True):
-        while True:
-            try:
-                with self.db.atomic:
-                    queue = self.db._tables.setdefault(self.name, [])
-                    if condition(queue[0]):
-                        return queue.pop(0)
-            except IndexError:
-                pass
-
-            if blocking:
-                time.sleep(0.1)
-            else:
-                raise ValueError('Queue is empty')
+        for repeat_ctx in repeat_if_needed(
+                exc_type=IndexError,
+                blocking=blocking,
+                error=ValueError('Queue is empty'),
+        ):
+            with repeat_ctx, self.db.atomic:
+                queue = self.db._tables.setdefault(self.name, [])
+                if condition(queue[0]):
+                    return queue.pop(0)
 
     def get(self, blocking=True):
         return self.get_if(lambda item: True, blocking=blocking)

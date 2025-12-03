@@ -7,6 +7,7 @@ import pydantic
 
 from lightemporal.context import ENV
 from lightemporal.models import param_types
+from lightemporal.utils import repeat_if_needed
 
 
 class FuncQueue:
@@ -44,17 +45,11 @@ class FuncQueue:
         sig = inspect.signature(func)
         adapter = pydantic.TypeAdapter(sig.return_annotation)
 
-        while True:
-            try:
-                with self.results.atomic:
-                    result = self.results.get(task_id)['result']
-                    self.results.delete(task_id)
-                    return adapter.validate_json(result)
-            except KeyError:
-                if blocking:
-                    time.sleep(0.1)
-                else:
-                    raise
+        for repeat_ctx in repeat_if_needed(exc_type=KeyError, blocking=blocking):
+            with repeat_ctx, self.results.atomic:
+                result = self.results.get(task_id)['result']
+                self.results.delete(task_id)
+                return adapter.validate_json(result)
 
     def set_result(self, task_id, func, result):
         sig = inspect.signature(func)

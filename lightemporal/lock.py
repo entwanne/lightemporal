@@ -2,6 +2,8 @@ import contextvars
 import time
 from pathlib import Path
 
+from .utils import repeat_if_needed
+
 
 class FileLock:
     def __init__(self, path, block=True, reentrant=False):
@@ -29,14 +31,14 @@ class FileLock:
             else:
                 raise ValueError('Deadlock')
 
-        while not stack:
-            try:
+        for repeat_ctx in repeat_if_needed(
+                exc_type=FileExistsError,
+                blocking=block,
+                error=ValueError('Cannot acquire lock'),
+        ):
+            with repeat_ctx:
                 stack = (self.path.open('x'),)
-            except FileExistsError:
-                if block:
-                    time.sleep(0.1)
-                else:
-                    raise ValueError('Cannot acquire lock')
+                break
 
         self._stack.set(stack)
 
