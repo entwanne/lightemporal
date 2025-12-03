@@ -10,7 +10,7 @@ from .lock import FileLock
 class Backend:
     def __init__(self, path='lightemporal.db'):
         self.path = Path(path)
-        self._write_lock = FileLock(self.path.with_name(self.path.name + '.lock'))
+        self._write_lock = FileLock(self.path.with_name(self.path.name + '.lock'), reentrant=True)
 
         self._tables = None
 

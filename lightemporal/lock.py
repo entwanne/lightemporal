@@ -1,12 +1,14 @@
+import contextvars
 import time
 from pathlib import Path
 
 
 class FileLock:
-    def __init__(self, path, block=True):
+    def __init__(self, path, block=True, reentrant=False):
         self.path = Path(path)
         self.block = block
-        self.file = None
+        self.reentrant = reentrant
+        self._stack = contextvars.ContextVar('stack', default=())
 
     def __enter__(self):
         self.acquire()
@@ -18,17 +20,34 @@ class FileLock:
         if block is None:
             block = self.block
 
-        while self.file is None:
+        stack = self._stack.get()
+
+        if stack:
+            if self.reentrant:
+                self._stack.set((*stack, None))
+                return
+            else:
+                raise ValueError('Deadlock')
+
+        while not stack:
             try:
-                self.file = self.path.open('x')
+                stack = (self.path.open('x'),)
             except FileExistsError:
                 if block:
                     time.sleep(0.1)
                 else:
-                    raise
+                    raise ValueError('Cannot acquire lock')
+
+        self._stack.set(stack)
 
     def release(self):
-        if self.file is not None:
+        stack = self._stack.get()
+
+        if not stack:
+            raise ValueError('No lock acquired')
+
+        if stack[-1] is not None:
             self.path.unlink()
-            self.file.close()
-            self.file = None
+            stack[-1].close()
+
+        self._stack.set(stack[:-1])
