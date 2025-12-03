@@ -25,14 +25,14 @@ class workflow:
         self.arg_types, self.kwarg_types = param_types(func)
         self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
 
+    def start(self, *args, **kwargs):
+        pass
+
     def __call__(self, *args, **kwargs):
         exc = False
         bound = self.sig.bind(*args, **kwargs)
         args, kwargs = bound.args, bound.kwargs
         kwargs = self.kwarg_types(**kwargs)
-        #print(repr(kwargs), kwargs.model_dump())
-        #print(b.args, b.kwargs)
-        #user_list_adapter = pydantic.TypeAdapter(tuple[tuple[str]])
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
         workflow = workflows.get_or_create(self.name, input_str)
         print(repr(workflow))
