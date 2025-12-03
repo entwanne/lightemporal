@@ -1,35 +1,36 @@
 import atexit
 import json
 from contextlib import contextmanager
+from functools import cache, cached_property
 from pathlib import Path
 
 from .lock import FileLock
 
 
 class Backend:
-    def __init__(self, db_path='lightemporal.db'):
-        self.db_path = Path(db_path)
-        self.write_lock = FileLock(self.db_path.with_name(self.db_path.name + '.lock'))
+    def __init__(self, path='lightemporal.db'):
+        self.path = Path(path)
+        self._write_lock = FileLock(self.path.with_name(self.path.name + '.lock'))
 
-        self.db = None
+        self._tables = None
 
     def reload(self):
-        if not self.db_path.exists():
-            with self.write_lock:
-                if not self.db_path.exists():
-                    self.db_path.write_text('{}')
-        with self.db_path.open() as f:
-            self.db = json.load(f)
+        if not self.path.exists():
+            with self._write_lock:
+                if not self.path.exists():
+                    self.path.write_text('{}')
+        with self.path.open() as f:
+            self._tables = json.load(f)
 
     def commit(self):
-        with self.write_lock:
-            with self.db_path.open('w') as f:
-                json.dump(self.db, f)
+        with self._write_lock:
+            with self.path.open('w') as f:
+                json.dump(self._tables, f)
 
     @property
     @contextmanager
     def atomic(self):
-        with self.write_lock:
+        with self._write_lock:
             try:
                 self.reload()
                 yield
@@ -40,21 +41,52 @@ class Backend:
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        self.db = None
+        self._tables = None
 
-    def get(self, table, id):
-        self.reload()
-        return self.db.get(table, {})[id]
+    @cached_property
+    def tables(self):
+        return TableView(self)
 
-    def list(self, table, **filters):
-        self.reload()
-        for row in self.db.get(table, {}).values():
+
+class TableView:
+    def __init__(self, db):
+        self.db = db
+
+    @cache
+    def __getitem__(self, name):
+        return Table(self.db, name)
+
+
+class Table:
+    def __init__(self, db, name):
+        self.db = db
+        self.name = name
+
+    @property
+    def reload(self):
+        return self.db.reload
+
+    @property
+    def commit(self):
+        return self.db.commit
+
+    @property
+    def atomic(self):
+        return self.db.atomic
+
+    def get(self, id):
+        self.db.reload()
+        return self.db._tables.get(self.name, {})[id]
+
+    def list(self, **filters):
+        self.db.reload()
+        for row in self.db._tables.get(self.name, {}).values():
             if all(row.get(key) == value for key, value in filters.items()):
                 yield row
 
-    def set(self, table, row):
-        with self.atomic:
-            self.db.setdefault(table, {})[row['id']] = row
+    def set(self, row):
+        with self.db.atomic:
+            self.db._tables.setdefault(self.name, {})[row['id']] = row
 
 
 backend_ctx = Backend()

@@ -28,15 +28,15 @@ class FuncQueue:
 
         with self.db.atomic:
             heapq.heappush(
-                self.db.db.setdefault(self.table, []),
+                self.db._tables.setdefault(self.table, []),
                 [timestamp, func.__name__, adapter.dump_python((args, kwargs), mode='json')],
             )
 
     def get(self, functions):
         while True:
             try:
-                with DB.atomic:
-                    queue = self.db.db[self.table]
+                with self.db.atomic:
+                    queue = self.db._tables[self.table]
                     if queue[0][0] <= time.time():
                         item = queue.pop(0)
                         break
