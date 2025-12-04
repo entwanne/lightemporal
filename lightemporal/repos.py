@@ -26,6 +26,9 @@ class WorkflowRepository:
             self.db.set(workflow.model_dump(mode='json'))
             return workflow
 
+    def get(self, workflow_id: str) -> Workflow:
+        return Workflow.model_validate(self.db.get(workflow_id))
+
     def complete(self, workflow: Workflow) -> Workflow:
         workflow.status = WorkflowStatus.COMPLETED
         self.db.set(workflow.model_dump(mode='json'))

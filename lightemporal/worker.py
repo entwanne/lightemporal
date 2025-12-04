@@ -1,18 +1,30 @@
+import inspect
 import time
 from contextlib import contextmanager
 
 from .core.context import ENV
 from .tasks.discovery import get_task_name
 from .tasks.exceptions import Suspend
-from .workflow import Runner as DefaultRunner, workflow
+from .workflow import DirectRunner, workflow
+
+
+class Handler:
+    def __init__(self, workflow, workflow_id, task_id):
+        self.workflow = workflow
+        self.workflow_id = workflow_id
+        self.task_id = task_id
+
+    def result(self):
+        return ENV['Q'].get_result(self.task_id, self.workflow)
 
 
 class Runner:
     def start(self, workflow, *args, **kwargs):
-        task_id = ENV['Q'].put(workflow.start, *args, **kwargs)
-        # + get intermediate result from the task
+        workflow_id = ENV['Q'].execute(workflow._create, *args, **kwargs)
+        task_id = ENV['Q'].put(workflow._run, workflow_id)
+        return Handler(workflow, workflow_id, task_id)
 
-    def call(self, workflow, *args, **kwargs):
+    def run(self, workflow, *args, **kwargs):
         return ENV['Q'].execute(workflow.run, *args, **kwargs)
 
 
@@ -36,13 +48,18 @@ def decorate_workflows():
         w.__qualname__ = w.func.__qualname__
         w.__taskname__ = get_task_name(w.func)
 
-        w.start = MethodWrapper(
-            w.start,
-            __taskname__=w.__taskname__+'.start',
-            __signature__=w.sig,
+        w._create = MethodWrapper(
+            w._create,
+            __taskname__=w.__taskname__+'._create',
+            __signature__=w.sig.replace(return_annotation=str),
+        )
+        w._run = MethodWrapper(
+            w._run,
+            __taskname__=w.__taskname__+'._run',
+            __signature__=inspect.signature(w._run).replace(return_annotation=w.sig.return_annotation),
         )
         w.run = MethodWrapper(
-            w.start,
+            w.run,
             __taskname__=w.__taskname__+'.run',
             __signature__=w.sig,
         )
@@ -53,7 +70,7 @@ def decorate_workflows():
 def worker_env():
     with ENV.new_layer():
         ENV['EXEC'] = TaskExecution()
-        ENV['RUN'] = DefaultRunner()
+        ENV['RUN'] = DirectRunner()
         decorate_workflows()
         yield
 
@@ -69,7 +86,8 @@ def runner_env():
 def discover_tasks_from_workflow(workflow):
     name = get_task_name(workflow)
     return {
-        get_task_name(workflow.start): workflow.start,
+        get_task_name(workflow._create): workflow._create,
+        get_task_name(workflow._run): workflow._run,
         get_task_name(workflow.run): workflow.run,
     }
 
