@@ -14,10 +14,13 @@ repos = Repositories()
 
 class Runner:
     def start(self, workflow, *args, **kwargs):
-        return workflow._call(*args, **kwargs)
+        w_id = workflow._create(*args, **kwargs)
+        # use thread to call _run
+        return workflow._run(w_id)
 
-    def call(self, workflow, *args, **kwargs):
-        return workflow._call(*args, **kwargs)
+    def run(self, workflow, *args, **kwargs):
+        w_id = workflow._create(*args, **kwargs)
+        return workflow._run(w_id)
 
 
 ENV['RUN'] = Runner()
@@ -36,24 +39,31 @@ class workflow:
 
         self.instances.append(self)
 
-    def start(self, *args, **kwargs):
-        return ENV['RUN'].call(self, *args, **kwargs)
-
     def run(self, *args, **kwargs):
-        return ENV['RUN'].call(self, *args, **kwargs)
+        return ENV['RUN'].run(self, *args, **kwargs)
+
+    def start(self, *args, **kwargs):
+        return ENV['RUN'].start(self, *args, **kwargs)
 
     def __call__(self, *args, **kwargs):
-        return ENV['RUN'].call(self, *args, **kwargs)
+        return ENV['RUN'].run(self, *args, **kwargs)
 
-    def _call(self, *args, **kwargs):
-        exc = False
+    def _create(self, *args, **kwargs):
         bound = self.sig.bind(*args, **kwargs)
         args, kwargs = bound.args, bound.kwargs
         kwargs = self.kwarg_types(**kwargs)
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
         workflow = repos.workflows.get_or_create(self.name, input_str)
+        return workflow.id
+
+    def _run(self, workflow_id: str):
+        workflow = repos.workflows.get(workflow_id)
         print(repr(workflow))
+
+        args, kwargs = self.input_adapter.validate_json(workflow.input)
         self.currents.set(self.currents.get() + (workflow.id,))
+
+        exc = False
 
         try:
             return self.func(*args, **kwargs.model_dump())
