@@ -5,9 +5,8 @@ import uuid
 
 import pydantic
 
-from lightemporal.context import ENV
-from lightemporal.models import param_types
-from lightemporal.utils import repeat_if_needed
+from ..core.context import ENV
+from ..core.utils import repeat_if_needed, param_types
 
 
 class FuncQueue:

@@ -1,9 +1,8 @@
 import time
 from contextlib import contextmanager
 
-from tasks.exceptions import Suspend
-
-from .context import ENV
+from .core.context import ENV
+from .tasks.exceptions import Suspend
 from .workflow import Runner as DefaultRunner
 
 

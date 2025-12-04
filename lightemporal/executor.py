@@ -1,6 +1,6 @@
 import time
 
-from .context import ENV
+from .core.context import ENV
 from .workflow import activity
 
 

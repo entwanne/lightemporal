@@ -1,5 +1,8 @@
+import inspect
 import time
 from contextlib import contextmanager
+
+import pydantic
 
 
 @contextmanager
@@ -26,3 +29,22 @@ class repeat_if_needed:
                 time.sleep(self.sleep_time)
             else:
                 raise self.error or RuntimeError()
+
+
+def param_types(f):
+    sig = inspect.signature(f)
+
+    args = tuple[*(
+        p.annotation
+        for p in sig.parameters.values()
+        if p.kind is not p.KEYWORD_ONLY
+    )]
+    kwargs = pydantic.create_model(
+        'kwargs',
+        **{
+            p.name: p.annotation
+            for p in sig.parameters.values()
+            if p.kind is p.KEYWORD_ONLY
+        }
+    )
+    return args, kwargs

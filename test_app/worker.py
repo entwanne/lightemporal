@@ -1,5 +1,5 @@
 from lightemporal.worker import worker_env
-from tasks.worker import run_worker
+from lightemporal.tasks.worker import run_worker
 
 from .workflows import payment_workflow, issue_refund, apply_refund
 

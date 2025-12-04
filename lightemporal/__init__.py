@@ -1,2 +1,4 @@
 from .workflow import activity, workflow
-from . import context, backend, executor
+from . import executor
+from .core import context, backend
+from .core.context import ENV

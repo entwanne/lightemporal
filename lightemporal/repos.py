@@ -1,6 +1,6 @@
 from functools import cached_property
 
-from .context import ENV
+from .core.context import ENV
 from .models import Workflow, WorkflowStatus, Activity
 
 

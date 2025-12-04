@@ -2,7 +2,7 @@ import sys
 import time
 from importlib.metadata import EntryPoint
 
-from lightemporal.context import ENV
+from ..core.context import ENV
 
 from .exceptions import Suspend
 
