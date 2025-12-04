@@ -49,8 +49,8 @@ def apply_refund(refund_id: str) -> int:
 
 @activity
 def check_payment_id(payment_id: str) -> bool:
+    may_fail()
     try:
-        may_fail()
         payments.get(payment_id)
     except Exception:
         return False
