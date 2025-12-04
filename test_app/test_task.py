@@ -1,8 +1,30 @@
+import functools
 import sys
 
 import random
 
 from lightemporal.tasks.exceptions import Suspend
+
+
+class TaskClass:
+    def __init__(self, name):
+        self.name = name
+
+    @staticmethod
+    def check() -> int:
+        return 42
+
+    def __call__(self, x: int) -> str:
+        return f'={self.name}={x}='
+
+
+tobj = TaskClass('tobj')
+
+def pouet(x: int) -> str:
+    ...
+
+functools.update_wrapper(tobj, pouet)
+pouet = tobj
 
 
 def toto(value: str, count: int) -> str:
@@ -12,7 +34,7 @@ def toto(value: str, count: int) -> str:
 
 
 if __name__ == '__main__':
-    print('Run worker with: python -m tasks.worker test_app.test_task:toto')
+    print('Run worker with: python -m tasks.worker test_app.test_task')
 
     from lightemporal import ENV
 
@@ -21,3 +43,5 @@ if __name__ == '__main__':
 
     Q = ENV['Q']
     print(Q.execute(toto, word, count))
+    print(Q.execute(TaskClass.check))
+    print(Q.execute(pouet, 5))

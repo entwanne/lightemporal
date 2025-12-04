@@ -8,6 +8,8 @@ import pydantic
 from ..core.context import ENV
 from ..core.utils import repeat_if_needed, param_types
 
+from .utils import get_full_name
+
 
 class FuncQueue:
     def __init__(self, db, queue_id):
@@ -29,7 +31,7 @@ class FuncQueue:
         bound = sig.bind(*args, **kwargs)
         args, kwargs = bound.args, kwarg_types(**bound.kwargs)
         adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
-        self.queue.put([timestamp, task_id, func.__name__, retry_count, adapter.dump_python((args, kwargs), mode='json')])
+        self.queue.put([timestamp, task_id, get_full_name(func), retry_count, adapter.dump_python((args, kwargs), mode='json')])
         return task_id
 
     def get(self, functions):
