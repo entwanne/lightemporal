@@ -13,6 +13,9 @@ repos = Repositories()
 
 
 class Runner:
+    def start(self, workflow, *args, **kwargs):
+        return workflow._call(*args, **kwargs)
+
     def call(self, workflow, *args, **kwargs):
         return workflow._call(*args, **kwargs)
 
@@ -21,21 +24,23 @@ ENV['RUN'] = Runner()
 
 
 class workflow:
+    instances = []
     currents = contextvars.ContextVar('current_workflows', default=())
 
     def __init__(self, func):
         self.func = func
         self.name = func.__qualname__
-        self.__name__ = func.__name__
-        self.__qualname__ = func.__qualname__
-        self.__module__ = func.__module__
         self.sig = self.__signature__ = inspect.signature(func)
-        #self.input_adapter = params_adapter(func)
         self.arg_types, self.kwarg_types = param_types(func)
         self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
 
+        self.instances.append(self)
+
     def start(self, *args, **kwargs):
-        pass
+        return ENV['RUN'].call(self, *args, **kwargs)
+
+    def run(self, *args, **kwargs):
+        return ENV['RUN'].call(self, *args, **kwargs)
 
     def __call__(self, *args, **kwargs):
         return ENV['RUN'].call(self, *args, **kwargs)

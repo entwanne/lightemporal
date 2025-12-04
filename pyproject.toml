@@ -7,3 +7,9 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["lightemporal", "test_app"]
+
+[project.entry-points.task_discovers]
+tasks = "lightemporal.tasks.discovery:discover"
+
+[project.entry-points.tasks]
+test_app = "test_app.test_task"
