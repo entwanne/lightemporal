@@ -4,3 +4,6 @@ version = "0.0.1"
 dependencies = [
     "pydantic",
 ]
+
+[tool.setuptools]
+packages = ["lightemporal", "test_app"]
