@@ -27,6 +27,8 @@ class workflow:
         self.func = func
         self.name = func.__qualname__
         self.__name__ = func.__name__
+        self.__qualname__ = func.__qualname__
+        self.__module__ = func.__module__
         self.sig = self.__signature__ = inspect.signature(func)
         #self.input_adapter = params_adapter(func)
         self.arg_types, self.kwarg_types = param_types(func)

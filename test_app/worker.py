@@ -1,13 +1,9 @@
 from lightemporal.worker import worker_env
-from lightemporal.tasks.worker import run_worker
+from lightemporal.tasks.worker import run
 
-from .workflows import payment_workflow, issue_refund, apply_refund
+from . import workflows
 
 
 if __name__ == '__main__':
     with worker_env():
-        run_worker(
-            payment_workflow=payment_workflow,
-            issue_refund=issue_refund,
-            apply_refund=apply_refund,
-        )
+        run(workflows)

@@ -1,11 +1,13 @@
 import sys
 import time
+import types
 from importlib.metadata import EntryPoint
 
 from ..core.context import ENV
 
 from .exceptions import Suspend
 from .retry import DEFAULT_POLICY
+from .utils import get_full_name
 
 
 def run_worker(retry_policy=DEFAULT_POLICY, /, **functions):
@@ -33,11 +35,41 @@ def run_worker(retry_policy=DEFAULT_POLICY, /, **functions):
             queue.set_result(task_id, func, ret)
 
 
-def load_functions(*names):
-    funcs = (EntryPoint(name, value=name, group='tasks').load() for name in names)
-    return {f.__name__: f for f in funcs}
+def discover_functions(*args):
+    def _discover(basename, obj):
+        try:
+            full_name = get_full_name(obj)
+        except AttributeError:
+            return
+        if not full_name.startswith(basename):
+            return
+
+        if hasattr(obj, '__call__'):
+            print('Loaded', full_name, ':', obj)
+            functions[full_name] = obj
+
+        if isinstance(obj, (type, types.ModuleType)) and (attrs := getattr(obj, '__dict__', None)):
+            for name, attr in attrs.items():
+                if name.startswith('__') and name.endswith('__'):
+                    continue
+                _discover(full_name, attr)
+
+    functions = {}
+
+    for arg in args:
+        _discover('', arg)
+
+    return functions
+
+
+def run(*args, **kwargs):
+    return run_worker(**discover_functions(*args), **kwargs)
+
+
+def discover_entrypoints(*names):
+    return discover_functions(*(EntryPoint(name, value=name, group='tasks').load() for name in names))
 
 
 if __name__ == '__main__':
-    functions = load_functions(*sys.argv[1:])
+    functions = discover_entrypoints(*sys.argv[1:])
     run_worker(**functions)

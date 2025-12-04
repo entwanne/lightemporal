@@ -7,6 +7,10 @@ from .workflow import Runner as DefaultRunner
 
 
 class Runner:
+    def start(self, workflow, *args, **kwargs):
+        task_id = ENV['Q'].put(workflow, *args, **kwargs)
+        # + get intermediate result from the task
+
     def call(self, workflow, *args, **kwargs):
         return ENV['Q'].execute(workflow, *args, **kwargs)
 
