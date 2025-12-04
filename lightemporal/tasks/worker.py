@@ -48,7 +48,7 @@ def discover_functions(*args):
             print('Loaded', full_name, ':', obj)
             functions[full_name] = obj
 
-        if attrs := getattr(obj, '__dict__', None):
+        if isinstance(obj, (type, types.ModuleType)) and (attrs := getattr(obj, '__dict__', None)):
             for name, attr in attrs.items():
                 if name.startswith('__') and name.endswith('__'):
                     continue
@@ -60,6 +60,10 @@ def discover_functions(*args):
         _discover('', arg)
 
     return functions
+
+
+def run(*args, **kwargs):
+    return run_worker(**discover_functions(*args), **kwargs)
 
 
 def discover_entrypoints(*names):
