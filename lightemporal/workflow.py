@@ -101,7 +101,7 @@ class workflow:
         print(repr(workflow))
 
         args, kwargs = self.input_adapter.validate_json(workflow.input)
-        self.currents.set(self.currents.get() + (workflow.id,))
+        self.currents.set(self.currents.get() + ({'id': workflow.id, 'step': 0},))
 
         exc = False
 
@@ -111,7 +111,7 @@ class workflow:
             exc = True
             raise
         finally:
-            assert self.currents.get()[-1] == workflow.id
+            assert self.currents.get()[-1]['id'] == workflow.id
             self.currents.set(self.currents.get()[:-1])
             if exc:
                 repos.workflows.failed(workflow)
@@ -143,7 +143,8 @@ class activity:
     def __call__(self, *args, **kwargs):
         if not workflow.currents.get():
             raise ValueError('No current workflow')
-        workflow_id = workflow.currents.get()[-1]
+        workflow_ctx = workflow.currents.get()[-1]
+        workflow_id = workflow_ctx['id']
         exc = None
 
         bound = self.sig.bind(*args, **kwargs)
@@ -151,7 +152,9 @@ class activity:
         kwargs = self.kwarg_types(**kwargs)
         input_str = self.input_adapter.dump_json((args, kwargs)).decode()
 
-        activity = repos.activities.may_find_one(workflow_id, self.name, input_str)
+        workflow_ctx['step'] += 1
+        name = f'{self.name}#{workflow_ctx['step']}'
+        activity = repos.activities.may_find_one(workflow_id, name, input_str)
         if activity is not None:
             return self.output_adapter.validate_json(activity.output)
 
@@ -164,5 +167,5 @@ class activity:
         finally:
             if not exc:
                 output_str = self.output_adapter.dump_json(ret).decode()
-                activity = Activity(workflow_id=workflow_id, name=self.name, input=input_str, output=output_str)
+                activity = Activity(workflow_id=workflow_id, name=name, input=input_str, output=output_str)
                 repos.activities.save(activity)
