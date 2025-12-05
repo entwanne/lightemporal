@@ -35,16 +35,28 @@ def sleep(duration):
 
 
 def wait():
+    from .models import Activity
     from .workflow import repos, workflow
-    workflow_id = workflow.currents.get()[-1]
-    if repos.activities.may_find_one(workflow_id, 'wait', '[[], {}]'):
+    workflow_ctx = workflow.currents.get()[-1]
+    workflow_id = workflow_ctx['id']
+    workflow_ctx['step'] += 1
+    step = workflow_ctx['step']
+    activity = repos.activities.may_find_one(workflow_id, f'wait#{step}', '[[], {}]')
+    if activity and activity.output == 'true':
         return
+    activity = Activity(workflow_id=workflow_id, name=f'wait#{step}', input='[[], {}]', output='false')
+    repos.activities.save(activity)
     ENV['EXEC'].suspend()
 
 
 def signal(workflow_id):
-    from .models import Activity
+    #from .models import Activity
     from .workflow import repos
-    activity = Activity(workflow_id=workflow_id, name='wait', input='[[], {}]', output='null')
-    repos.activities.save(activity)
-    ENV['EXEC'].wake_up(workflow_id)
+    #activity = Activity(workflow_id=workflow_id, name='wait', input='[[], {}]', output='null')
+    # get last run,ning activity and set to true
+    #repos.activities.save(activity)
+    for row in repos.activities.db.list(workflow_id=workflow_id):
+        if row['name'].startswith('wait#') and row['output'] == 'false':
+            row['output'] = 'true'
+            repos.activities.db.set(row)
+            ENV['EXEC'].wake_up(workflow_id)
