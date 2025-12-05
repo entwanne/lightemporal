@@ -25,8 +25,12 @@ def run_worker(retry_policy=DEFAULT_POLICY, /, **tasks):
             ret = func(*args, **kwargs)
             print(repr(ret))
         except Suspend as e:
-            print(f'{task_name} suspended for {round(max(e.timestamp - time.time(), 0))}s')
-            queue._call(task_id, func, e.timestamp, retry_count, args, kwargs)
+            if e.timestamp is None:
+                print(f'{task_name} suspended')
+                queue._postpone(task_id, func, retry_count, args, kwargs)
+            else:
+                print(f'{task_name} suspended for {round(max(e.timestamp - time.time(), 0))}s')
+                queue._call(task_id, func, e.timestamp, retry_count, args, kwargs)
         except retry_policy.error_type as e:
             print(f'{task_name} failed: {e!r}')
             if retry_count < retry_policy.max_retries:

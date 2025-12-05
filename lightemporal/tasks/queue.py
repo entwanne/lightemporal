@@ -14,6 +14,7 @@ from .discovery import get_task_name
 class FuncQueue:
     def __init__(self, db, queue_id):
         self.queue = db.queues[f'queue.{queue_id}']
+        self.suspended = db.tables[f'suspended.{queue_id}']
         self.results = db.tables[f'results.{queue_id}']
 
     def put(self, func, /, *args, **kwargs):
@@ -33,6 +34,25 @@ class FuncQueue:
         adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
         self.queue.put([timestamp, task_id, get_task_name(func), retry_count, adapter.dump_python((args, kwargs), mode='json')])
         return task_id
+
+    def _postpone(self, task_id, func, retry_count, args, kwargs):
+        sig = inspect.signature(func)
+        arg_types, kwarg_types = param_types(func)
+        bound = sig.bind(*args, **kwargs)
+        args, kwargs = bound.args, kwarg_types(**bound.kwargs)
+        adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
+        self.suspended.set({
+            'id': task_id,
+            'task': get_task_name(func),
+            'retry_count': retry_count,
+            'input': adapter.dump_python((args, kwargs), mode='json'),
+        })
+
+    def _wakeup(self, task_id):
+        with self.suspended.atomic:
+            data = self.suspended.get(task_id)
+            self.suspended.delete(task_id)
+        self.queue.put([time.time(), task_id, data['task'], data['retry_count'], data['input']])
 
     def get(self, functions):
         _, task_id, func_name, retry_count, input_ = self.queue.get_if(lambda item: item[0] <= time.time())

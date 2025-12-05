@@ -1,7 +1,7 @@
 import random
 
 from lightemporal import activity, workflow
-from lightemporal.executor import sleep
+from lightemporal.executor import sleep, wait
 
 from .models import Payment, Refund
 from .repos import Repositories
@@ -23,9 +23,12 @@ def payment_workflow(payment_id: str) -> None:
 
 @workflow
 def issue_refund(payment_id: str, amount: int) -> str:
-    print('Sleeping for 5s')
-    sleep(5)
-    print('End sleep')
+    #print('Sleeping for 5s')
+    #sleep(5)
+    #print('End sleep')
+    print('Suspending')
+    wait()
+    print('End of suspend')
 
     if not check_payment_id(payment_id):
         return ''
