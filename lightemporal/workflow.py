@@ -1,5 +1,6 @@
 import contextvars
 import inspect
+import threading
 from contextlib import contextmanager
 
 import pydantic
@@ -12,18 +13,57 @@ from .repos import Repositories
 repos = Repositories()
 
 
-class Runner:
+class DirectRunner:
     def start(self, workflow, *args, **kwargs):
-        w_id = workflow._create(*args, **kwargs)
-        # use thread to call _run
-        return workflow._run(w_id)
+        raise RuntimeError('Cannot start async workflow with direct runner')
 
     def run(self, workflow, *args, **kwargs):
         w_id = workflow._create(*args, **kwargs)
         return workflow._run(w_id)
 
 
-ENV['RUN'] = Runner()
+class Handler:
+    unset = object()
+
+    def __init__(self, target, workflow_id):
+        self._target = target
+        self.workflow_id = workflow_id
+        self.thread = threading.Thread(target=self.target, args=(dict(ENV),))
+        self.ret = self.unset
+        self.error = self.unset
+
+    def target(self, parent_env):
+        try:
+            with ENV.new_layer():
+                ENV.update(parent_env)
+                self.ret = self._target(self.workflow_id)
+        except Exception as e:
+            self.error = e
+
+    def start(self):
+        self.thread.start()
+
+    def result(self):
+        self.thread.join()
+        if self.error is not self.unset:
+            raise self.error
+        assert self.ret is not self.unset
+        return self.ret
+
+
+class ThreadRunner:
+    def start(self, workflow, *args, **kwargs):
+        handler = Handler(workflow._run, workflow._create(*args, **kwargs))
+        handler.start()
+        return handler
+
+    def run(self, workflow, *args, **kwargs):
+        handler = self.start(workflow, *args, **kwargs)
+        return handler.result()
+
+
+ENV['RUN'] = DirectRunner()
+#ENV['RUN'] = ThreadRunner()
 
 
 class workflow:

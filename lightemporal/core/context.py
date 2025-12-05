@@ -31,6 +31,9 @@ class Context:
     def __delitem__(self, key):
         del self._map.get()[key]
 
+    def update(self, mapping):
+        self._map.get().update(mapping)
+
 
 class _BaseMap:
     def keys(self):
@@ -74,6 +77,9 @@ class _ContextLayer:
 
     def __delitem__(self, key):
         del self.mapping[key]
+
+    def update(self, mapping):
+        self.mapping.update(mapping)
 
 
 def enter_global_manager(manager):

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from .core.context import ENV
 from .tasks.discovery import get_task_name
 from .tasks.exceptions import Suspend
-from .workflow import Runner as DefaultRunner, workflow
+from .workflow import DirectRunner, workflow
 
 
 class Handler:
@@ -70,7 +70,7 @@ def decorate_workflows():
 def worker_env():
     with ENV.new_layer():
         ENV['EXEC'] = TaskExecution()
-        ENV['RUN'] = DefaultRunner()
+        ENV['RUN'] = DirectRunner()
         decorate_workflows()
         yield
 
