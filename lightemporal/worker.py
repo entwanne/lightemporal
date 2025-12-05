@@ -22,6 +22,7 @@ class Runner:
     def start(self, workflow, *args, **kwargs):
         workflow_id = ENV['Q'].execute(workflow._create, *args, **kwargs)
         task_id = ENV['Q'].put(workflow._run, workflow_id)
+        ENV['Q'].queue.db.tables['tasks.queues'].set({'id': workflow_id, 'task_id': task_id})
         return Handler(workflow, workflow_id, task_id)
 
     def run(self, workflow, *args, **kwargs):
@@ -29,8 +30,15 @@ class Runner:
 
 
 class TaskExecution:
-    def suspend(self, timestamp):
+    def suspend_until(self, timestamp):
         raise Suspend(timestamp=timestamp)
+
+    def suspend(self):
+        raise Suspend
+
+    def wake_up(self, workflow_id):
+        data = ENV['Q'].queue.db.tables['tasks.queues'].get(workflow_id)
+        ENV['Q']._wakeup(data['task_id'])
 
 
 def decorate_workflows():
