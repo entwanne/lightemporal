@@ -1,9 +1,7 @@
 import contextvars
 import inspect
-import threading
+import time
 from contextlib import contextmanager
-
-import pydantic
 
 from .core.context import ENV
 from .core.utils import SignatureWrapper
@@ -11,59 +9,6 @@ from .models import Workflow, WorkflowStatus, Activity, Signal
 from .repos import Repositories
 
 repos = Repositories()
-
-
-class DirectRunner:
-    def start(self, workflow, *args, **kwargs):
-        raise RuntimeError('Cannot start async workflow with direct runner')
-
-    def run(self, workflow, *args, **kwargs):
-        w_id = workflow._create(*args, **kwargs)
-        return workflow._run(w_id)
-
-
-class Handler:
-    unset = object()
-
-    def __init__(self, target, workflow_id):
-        self._target = target
-        self.workflow_id = workflow_id
-        self.thread = threading.Thread(target=self.target, args=(dict(ENV),))
-        self.ret = self.unset
-        self.error = self.unset
-
-    def target(self, parent_env):
-        try:
-            with ENV.new_layer():
-                ENV.update(parent_env)
-                self.ret = self._target(self.workflow_id)
-        except Exception as e:
-            self.error = e
-
-    def start(self):
-        self.thread.start()
-
-    def result(self):
-        self.thread.join()
-        if self.error is not self.unset:
-            raise self.error
-        assert self.ret is not self.unset
-        return self.ret
-
-
-class ThreadRunner:
-    def start(self, workflow, *args, **kwargs):
-        handler = Handler(workflow._run, workflow._create(*args, **kwargs))
-        handler.start()
-        return handler
-
-    def run(self, workflow, *args, **kwargs):
-        handler = self.start(workflow, *args, **kwargs)
-        return handler.result()
-
-
-ENV['RUN'] = DirectRunner()
-#ENV['RUN'] = ThreadRunner()
 
 
 class workflow:
@@ -125,23 +70,23 @@ class workflow:
 
     @staticmethod
     def sleep(duration):
-        from .executor import _sleep_until, _timestamp_for_duration
         return _sleep_until(_timestamp_for_duration(duration))
 
     @staticmethod
     def wait(name: str):
-        workflow_ctx = workflow.currents.get()[-1]
-        workflow_id = workflow_ctx['id']
-        workflow_ctx['step'] += 1
-        step = workflow_ctx['step']
-        if repos.signals.may_find_one(workflow_id, name, step):
-            return
-        ENV['EXEC'].suspend()
+        while True:
+            workflow_ctx = workflow.currents.get()[-1]
+            workflow_id = workflow_ctx['id']
+            workflow_ctx['step'] += 1
+            step = workflow_ctx['step']
+            if repos.signals.may_find_one(workflow_id, name, step):
+                return
+            ENV['EXEC'].suspend(workflow_id)
 
     @staticmethod
     def signal(workflow_id: str, name: str):
         repos.signals.new(Signal(workflow_id=workflow_id, name=name))
-        ENV['EXEC'].wake_up(workflow_id)
+        ENV['RUN'].wake_up(workflow_id)
 
 
 class activity:
@@ -176,3 +121,16 @@ class activity:
                 output_str = self.sig.dump_output(ret)
                 activity = Activity(workflow_id=workflow_id, name=name, input=input_str, output=output_str)
                 repos.activities.save(activity)
+
+
+@activity
+def _timestamp_for_duration(duration: int) -> float:
+    return time.time() + duration
+
+
+@activity
+def _sleep_until(timestamp: float) -> None:
+    workflow_ctx = workflow.currents.get()[-1]
+    workflow_id = workflow_ctx['id']
+    if timestamp > time.time():
+        ENV['EXEC'].suspend_until(workflow_id, timestamp)

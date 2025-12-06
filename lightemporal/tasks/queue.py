@@ -3,8 +3,6 @@ import inspect
 import time
 import uuid
 
-import pydantic
-
 from ..core.context import ENV
 from ..core.utils import repeat_if_needed, SignatureWrapper
 
