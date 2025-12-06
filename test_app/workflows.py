@@ -27,9 +27,9 @@ def issue_refund(payment_id: str, amount: int) -> str:
     #sleep(3)
     #sleep(2)
     #print('End sleep')
-    for _ in range(2):
-        print('Suspending')
-        wait()
+    for i in range(2):
+        print('Suspending', i+1)
+        wait('test_signal')
         print('End of suspend')
 
     if not check_payment_id(payment_id):
