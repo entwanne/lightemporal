@@ -1,6 +1,7 @@
 import inspect
 import time
 from contextlib import contextmanager
+from functools import cached_property
 
 import pydantic
 
@@ -31,20 +32,53 @@ class repeat_if_needed:
                 raise self.error or RuntimeError()
 
 
-def param_types(f):
-    sig = inspect.signature(f)
+class SignatureWrapper:
+    def __init__(self, signature):
+        self.signature = signature
 
-    args = tuple[*(
-        p.annotation
-        for p in sig.parameters.values()
-        if p.kind is not p.KEYWORD_ONLY
-    )]
-    kwargs = pydantic.create_model(
-        'kwargs',
-        **{
-            p.name: p.annotation
-            for p in sig.parameters.values()
-            if p.kind is p.KEYWORD_ONLY
-        }
-    )
-    return args, kwargs
+    @classmethod
+    def from_function(cls, function):
+        return cls(inspect.signature(function))
+
+    @cached_property
+    def args_model(self):
+        return tuple[*(
+            p.annotation
+            for p in self.signature.parameters.values()
+            if p.kind is not p.KEYWORD_ONLY
+        )]
+
+    @cached_property
+    def kwargs_model(self):
+        return pydantic.create_model(
+            'kwargs',
+            **{
+                p.name: p.annotation
+                for p in self.signature.parameters.values()
+                if p.kind is p.KEYWORD_ONLY
+            }
+        )
+
+    @cached_property
+    def input_adapter(self):
+        return pydantic.TypeAdapter(tuple[self.args_model, self.kwargs_model])
+
+    @cached_property
+    def output_adapter(self):
+        return pydantic.TypeAdapter(self.signature.return_annotation)
+
+    def load_input(self, input: str):
+        args, kwargs = self.input_adapter.validate_json(input)
+        return args, kwargs.model_dump()
+
+    def dump_input(self, *args, **kwargs) -> str:
+        bound = self.signature.bind(*args, **kwargs)
+        args, kwargs = bound.args, bound.kwargs
+        kwargs = self.kwargs_model(**kwargs)
+        return self.input_adapter.dump_json((args, kwargs)).decode()
+
+    def load_output(self, output: str):
+        return self.output_adapter.validate_json(output)
+
+    def dump_output(self, value) -> str:
+        return self.output_adapter.dump_json(value).decode()

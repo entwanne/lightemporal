@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import pydantic
 
 from .core.context import ENV
-from .core.utils import param_types
+from .core.utils import SignatureWrapper
 from .models import Workflow, WorkflowStatus, Activity, Signal
 from .repos import Repositories
 
@@ -73,9 +73,8 @@ class workflow:
     def __init__(self, func):
         self.func = func
         self.name = func.__qualname__
-        self.sig = self.__signature__ = inspect.signature(func)
-        self.arg_types, self.kwarg_types = param_types(func)
-        self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
+        self.sig = SignatureWrapper.from_function(func)
+        self.__signature__ = self.sig.signature
 
         self.instances.append(self)
 
@@ -89,10 +88,7 @@ class workflow:
         return ENV['RUN'].run(self, *args, **kwargs)
 
     def _create(self, *args, **kwargs):
-        bound = self.sig.bind(*args, **kwargs)
-        args, kwargs = bound.args, bound.kwargs
-        kwargs = self.kwarg_types(**kwargs)
-        input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+        input_str = self.sig.dump_input(*args, **kwargs)
         workflow = repos.workflows.get_or_create(self.name, input_str)
         return workflow.id
 
@@ -100,13 +96,13 @@ class workflow:
         workflow = repos.workflows.get(workflow_id)
         print(repr(workflow))
 
-        args, kwargs = self.input_adapter.validate_json(workflow.input)
+        args, kwargs = self.sig.load_input(workflow.input)
         self.currents.set(self.currents.get() + ({'id': workflow.id, 'step': 0},))
 
         exc = False
 
         try:
-            return self.func(*args, **kwargs.model_dump())
+            return self.func(*args, **kwargs)
         except Exception:
             exc = True
             raise
@@ -120,10 +116,7 @@ class workflow:
 
     @contextmanager
     def use(self, *args, **kwargs):
-        bound = self.sig.bind(*args, **kwargs)
-        args, kwargs = bound.args, bound.kwargs
-        kwargs = self.kwarg_types(**kwargs)
-        input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+        input_str = self.sig.dump_input(*args, **kwargs)
         workflow = repos.workflows.get_or_create(self.name, input_str)
         try:
             yield
@@ -155,10 +148,7 @@ class activity:
     def __init__(self, func):
         self.func = func
         self.name = func.__qualname__
-        self.sig = inspect.signature(func)
-        self.arg_types, self.kwarg_types = param_types(func)
-        self.input_adapter = pydantic.TypeAdapter(tuple[self.arg_types, self.kwarg_types])
-        self.output_adapter = pydantic.TypeAdapter(self.sig.return_annotation)
+        self.sig = SignatureWrapper.from_function(func)
 
     def __call__(self, *args, **kwargs):
         if not workflow.currents.get():
@@ -167,25 +157,22 @@ class activity:
         workflow_id = workflow_ctx['id']
         exc = None
 
-        bound = self.sig.bind(*args, **kwargs)
-        args, kwargs = bound.args, bound.kwargs
-        kwargs = self.kwarg_types(**kwargs)
-        input_str = self.input_adapter.dump_json((args, kwargs)).decode()
+        input_str = self.sig.dump_input(*args, **kwargs)
 
         workflow_ctx['step'] += 1
         name = f'{self.name}#{workflow_ctx['step']}'
         activity = repos.activities.may_find_one(workflow_id, name, input_str)
         if activity is not None:
-            return self.output_adapter.validate_json(activity.output)
+            return self.sig.load_output(activity.output)
 
         try:
-            ret = self.func(*args, **kwargs.model_dump())
+            ret = self.func(*args, **kwargs)
             return ret
         except Exception:
             exc = True
             raise
         finally:
             if not exc:
-                output_str = self.output_adapter.dump_json(ret).decode()
+                output_str = self.sig.dump_output(ret)
                 activity = Activity(workflow_id=workflow_id, name=name, input=input_str, output=output_str)
                 repos.activities.save(activity)
