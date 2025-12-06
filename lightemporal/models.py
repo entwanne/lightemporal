@@ -27,3 +27,10 @@ class Activity(pydantic.BaseModel):
     name: str
     input: str
     output: str
+
+
+class Signal(pydantic.BaseModel):
+    id: UUID
+    workflow_id: UUID
+    name: str
+    step: int | None = None
