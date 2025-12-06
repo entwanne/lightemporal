@@ -7,7 +7,7 @@ import pydantic
 
 from .core.context import ENV
 from .core.utils import param_types
-from .models import Workflow, WorkflowStatus, Activity
+from .models import Workflow, WorkflowStatus, Activity, Signal
 from .repos import Repositories
 
 repos = Repositories()
@@ -129,6 +129,26 @@ class workflow:
             yield
         finally:
             repos.workflows.complete(workflow)
+
+    @staticmethod
+    def sleep(duration):
+        from .executor import _sleep_until, _timestamp_for_duration
+        return _sleep_until(_timestamp_for_duration(duration))
+
+    @staticmethod
+    def wait(name: str):
+        workflow_ctx = workflow.currents.get()[-1]
+        workflow_id = workflow_ctx['id']
+        workflow_ctx['step'] += 1
+        step = workflow_ctx['step']
+        if repos.signals.may_find_one(workflow_id, name, step):
+            return
+        ENV['EXEC'].suspend()
+
+    @staticmethod
+    def signal(workflow_id: str, name: str):
+        repos.signals.new(Signal(workflow_id=workflow_id, name=name))
+        ENV['EXEC'].wake_up(workflow_id)
 
 
 class activity:
