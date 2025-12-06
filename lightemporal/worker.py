@@ -9,10 +9,10 @@ from .workflow import workflow
 
 
 class TaskExecution:
-    def suspend_until(self, timestamp):
+    def suspend_until(self, workflow_id, timestamp):
         raise Suspend(timestamp=timestamp)
 
-    def suspend(self):
+    def suspend(self, workflow_id):
         raise Suspend
 
 

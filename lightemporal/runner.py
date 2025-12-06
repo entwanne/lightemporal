@@ -1,16 +1,17 @@
 import threading
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 
 from .core.context import ENV
 
 
-class Execution:
-    def suspend_until(self, timestamp):
+class DirectExecution:
+    def suspend_until(self, workflow_id, timestamp):
         time.sleep(max(timestamp - time.time(), 0))
 
-    def suspend(self):
-        pass
+    def suspend(self, workflow_id):
+        raise RuntimeError('Cannot suspend sync workflow')
 
 
 class DirectRunner:
@@ -18,11 +19,22 @@ class DirectRunner:
         raise RuntimeError('Cannot start async workflow with direct runner')
 
     def run(self, workflow, *args, **kwargs):
-        w_id = workflow._create(*args, **kwargs)
-        return workflow._run(w_id)
+        with ENV.new_layer():
+            ENV['EXEC'] = DirectExecution()
+            w_id = workflow._create(*args, **kwargs)
+            return workflow._run(w_id)
 
     def wake_up(self, id):
-        pass
+        raise RuntimeError('Cannot wake-up async workflow with direct runner')
+
+
+class ThreadExecution(DirectExecution):
+    events = defaultdict(threading.Event)
+
+    def suspend(self, workflow_id):
+        evt = self.events[workflow_id]
+        evt.clear()
+        evt.wait()
 
 
 class ThreadRunner:
@@ -34,6 +46,9 @@ class ThreadRunner:
     def run(self, workflow, *args, **kwargs):
         handler = self.start(workflow, *args, **kwargs)
         return handler.result()
+
+    def wake_up(self, id):
+        ThreadExecution.events[id].set()
 
 
 class Handler:
@@ -50,6 +65,7 @@ class Handler:
         try:
             with ENV.new_layer():
                 ENV.update(parent_env)
+                ENV['EXEC'] = ThreadExecution()
                 self.ret = self._target(self.workflow_id)
         except Exception as e:
             self.error = e
@@ -65,7 +81,6 @@ class Handler:
         return self.ret
 
 
-ENV['EXEC'] = Execution()
 ENV['RUN'] = DirectRunner()
 
 

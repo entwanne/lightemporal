@@ -74,13 +74,14 @@ class workflow:
 
     @staticmethod
     def wait(name: str):
-        workflow_ctx = workflow.currents.get()[-1]
-        workflow_id = workflow_ctx['id']
-        workflow_ctx['step'] += 1
-        step = workflow_ctx['step']
-        if repos.signals.may_find_one(workflow_id, name, step):
-            return
-        ENV['EXEC'].suspend()
+        while True:
+            workflow_ctx = workflow.currents.get()[-1]
+            workflow_id = workflow_ctx['id']
+            workflow_ctx['step'] += 1
+            step = workflow_ctx['step']
+            if repos.signals.may_find_one(workflow_id, name, step):
+                return
+            ENV['EXEC'].suspend(workflow_id)
 
     @staticmethod
     def signal(workflow_id: str, name: str):
@@ -129,5 +130,7 @@ def _timestamp_for_duration(duration: int) -> float:
 
 @activity
 def _sleep_until(timestamp: float) -> None:
+    workflow_ctx = workflow.currents.get()[-1]
+    workflow_id = workflow_ctx['id']
     if timestamp > time.time():
-        ENV['EXEC'].suspend_until(timestamp)
+        ENV['EXEC'].suspend_until(workflow_id, timestamp)
