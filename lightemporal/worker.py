@@ -59,12 +59,12 @@ def decorate_workflows():
         w._create = MethodWrapper(
             w._create,
             __taskname__=w.__taskname__+'._create',
-            __signature__=w.sig.replace(return_annotation=str),
+            __signature__=w.__signature__.replace(return_annotation=str),
         )
         w._run = MethodWrapper(
             w._run,
             __taskname__=w.__taskname__+'._run',
-            __signature__=inspect.signature(w._run).replace(return_annotation=w.sig.return_annotation),
+            __signature__=inspect.signature(w._run).replace(return_annotation=w.__signature__.return_annotation),
         )
         w.run = MethodWrapper(
             w.run,

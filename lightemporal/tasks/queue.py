@@ -6,7 +6,7 @@ import uuid
 import pydantic
 
 from ..core.context import ENV
-from ..core.utils import repeat_if_needed, param_types
+from ..core.utils import repeat_if_needed, SignatureWrapper
 
 from .discovery import get_task_name
 
@@ -27,25 +27,17 @@ class FuncQueue:
         return self._call(str(uuid.uuid4()), func, timestamp, 0, args, kwargs)
 
     def _call(self, task_id, func, timestamp, retry_count, args, kwargs):
-        sig = inspect.signature(func)
-        arg_types, kwarg_types = param_types(func)
-        bound = sig.bind(*args, **kwargs)
-        args, kwargs = bound.args, kwarg_types(**bound.kwargs)
-        adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
-        self.queue.put([timestamp, task_id, get_task_name(func), retry_count, adapter.dump_python((args, kwargs), mode='json')])
+        sig = SignatureWrapper.from_function(func)
+        self.queue.put([timestamp, task_id, get_task_name(func), retry_count, sig.dump_input(*args, **kwargs)])
         return task_id
 
     def _postpone(self, task_id, func, retry_count, args, kwargs):
-        sig = inspect.signature(func)
-        arg_types, kwarg_types = param_types(func)
-        bound = sig.bind(*args, **kwargs)
-        args, kwargs = bound.args, kwarg_types(**bound.kwargs)
-        adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
+        sig = SignatureWrapper.from_function(func)
         self.suspended.set({
             'id': task_id,
             'task': get_task_name(func),
             'retry_count': retry_count,
-            'input': adapter.dump_python((args, kwargs), mode='json'),
+            'input': sig.dump_input(*args, **kwargs),
         })
 
     def _wakeup(self, task_id):
@@ -57,14 +49,12 @@ class FuncQueue:
     def get(self, functions):
         _, task_id, func_name, retry_count, input_ = self.queue.get_if(lambda item: item[0] <= time.time())
         func = functions[func_name]
-        arg_types, kwarg_types = param_types(func)
-        adapter = pydantic.TypeAdapter(tuple[arg_types, kwarg_types])
-        args, kwargs = adapter.validate_python(input_)
-        return task_id, func, retry_count, args, kwargs.model_dump()
+        sig = SignatureWrapper.from_function(func)
+        args, kwargs = sig.load_input(input_)
+        return task_id, func, retry_count, args, kwargs
 
     def get_result(self, task_id, func, blocking=True):
-        sig = inspect.signature(func)
-        adapter = pydantic.TypeAdapter(sig.return_annotation)
+        sig = SignatureWrapper.from_function(func)
 
         for repeat_ctx in repeat_if_needed(exc_type=KeyError, blocking=blocking):
             with repeat_ctx, self.results.atomic:
@@ -72,15 +62,14 @@ class FuncQueue:
                 self.results.delete(task_id)
                 if (error := result.get('error')) is not None:
                     raise ValueError(error)
-                return adapter.validate_json(result['result'])
+                return sig.load_output(result['result'])
 
     def set_error(self, task_id, error_msg):
         self.results.set({'id': task_id, 'error': error_msg})
 
     def set_result(self, task_id, func, result):
-        sig = inspect.signature(func)
-        adapter = pydantic.TypeAdapter(sig.return_annotation)
-        self.results.set({'id': task_id, 'result': adapter.dump_json(result).decode()})
+        sig = SignatureWrapper.from_function(func)
+        self.results.set({'id': task_id, 'result': sig.dump_output(result)})
 
     def execute(self, func, /, *args, **kwargs):
         task_id = self.put(func, *args, **kwargs)
