@@ -73,19 +73,23 @@ class workflow:
         return _sleep_until(_timestamp_for_duration(duration))
 
     @staticmethod
-    def wait(name: str):
+    def wait(signal_cls):
         while True:
             workflow_ctx = workflow.currents.get()[-1]
             workflow_id = workflow_ctx['id']
             workflow_ctx['step'] += 1
             step = workflow_ctx['step']
-            if repos.signals.may_find_one(workflow_id, name, step):
-                return
+            if signal := repos.signals.may_find_one(workflow_id, signal_cls.__signal_name__, step):
+                return signal_cls.model_validate(signal.content)
             ENV['EXEC'].suspend(workflow_id)
 
     @staticmethod
-    def signal(workflow_id: str, name: str):
-        repos.signals.new(Signal(workflow_id=workflow_id, name=name))
+    def signal(workflow_id: str, signal):
+        repos.signals.new(Signal(
+            workflow_id=workflow_id,
+            name=type(signal).__signal_name__,
+            content=signal.model_dump(mode='json'),
+        ))
         ENV['RUN'].wake_up(workflow_id)
 
 
@@ -134,3 +138,8 @@ def _sleep_until(timestamp: float) -> None:
     workflow_id = workflow_ctx['id']
     if timestamp > time.time():
         ENV['EXEC'].suspend_until(workflow_id, timestamp)
+
+
+def signal(f):
+    f.__signal_name__ = f.__name__
+    return f

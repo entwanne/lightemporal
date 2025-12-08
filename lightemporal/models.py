@@ -30,4 +30,5 @@ class Signal(pydantic.BaseModel):
     id: UUID
     workflow_id: UUID
     name: str
+    content: dict
     step: int | None = None

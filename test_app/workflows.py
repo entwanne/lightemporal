@@ -1,6 +1,7 @@
 import random
 
-from lightemporal import activity, workflow
+import pydantic
+from lightemporal import activity, workflow, signal
 
 from .models import Payment, Refund
 from .repos import Repositories
@@ -13,6 +14,11 @@ refunds = repos.refunds
 def may_fail():
     if random.random() < 1/3:
         raise ValueError
+
+
+@signal
+class TestSignal(pydantic.BaseModel):
+    message: str = ''
 
 
 @workflow
@@ -28,7 +34,8 @@ def issue_refund(payment_id: str, amount: int) -> str:
     print('End sleep')
     for i in range(2):
         print('Suspending', i+1)
-        workflow.wait('test_signal')
+        signal = workflow.wait(TestSignal)
+        print('Received', repr(signal))
         print('End of suspend')
 
     if not check_payment_id(payment_id):
