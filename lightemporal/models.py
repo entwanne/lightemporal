@@ -1,11 +1,8 @@
 import enum
-from typing import Annotated
-from uuid import uuid4
 
 import pydantic
 
-
-UUID = Annotated[str, pydantic.Field(default_factory=lambda: str(uuid4()))]
+from .core.utils import UUID
 
 
 class WorkflowStatus(enum.Enum):
@@ -27,3 +24,11 @@ class Activity(pydantic.BaseModel):
     name: str
     input: str
     output: str
+
+
+class Signal(pydantic.BaseModel):
+    id: UUID
+    workflow_id: UUID
+    name: str
+    content: dict
+    step: int | None = None

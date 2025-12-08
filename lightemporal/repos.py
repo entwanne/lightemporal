@@ -1,7 +1,7 @@
 from functools import cached_property
 
 from .core.context import ENV
-from .models import Workflow, WorkflowStatus, Activity
+from .models import Workflow, WorkflowStatus, Activity, Signal
 
 
 class WorkflowRepository:
@@ -25,6 +25,9 @@ class WorkflowRepository:
             workflow = Workflow(name=name, input=input)
             self.db.set(workflow.model_dump(mode='json'))
             return workflow
+
+    def get(self, workflow_id: str) -> Workflow:
+        return Workflow.model_validate(self.db.get(workflow_id))
 
     def complete(self, workflow: Workflow) -> Workflow:
         workflow.status = WorkflowStatus.COMPLETED
@@ -50,6 +53,24 @@ class ActivityRepository:
         return None
 
 
+class SignalRepository:
+    def __init__(self, db):
+        self.db = db.tables['signals']
+
+    def new(self, signal: Signal) -> None:
+        self.db.set(signal.model_dump(mode='json'))
+
+    def may_find_one(self, workflow_id: str, name: str, step: int) -> Signal | None:
+        with self.db.atomic:
+            for row in self.db.list(workflow_id=workflow_id, name=name, step=step):
+                return Signal.model_validate(row)
+            for row in self.db.list(workflow_id=workflow_id, name=name, step=None):
+                row['step'] = step
+                self.db.set(row)
+                return Signal.model_validate(row)
+        return None
+
+
 class Repositories:
     @cached_property
     def workflows(self):
@@ -58,3 +79,7 @@ class Repositories:
     @cached_property
     def activities(self):
         return ActivityRepository(ENV['DB'])
+
+    @cached_property
+    def signals(self):
+        return SignalRepository(ENV['DB'])

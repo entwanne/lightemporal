@@ -1,7 +1,7 @@
 import random
 
-from lightemporal import activity, workflow
-from lightemporal.executor import sleep
+import pydantic
+from lightemporal import activity, workflow, signal
 
 from .models import Payment, Refund
 from .repos import Repositories
@@ -16,6 +16,11 @@ def may_fail():
         raise ValueError
 
 
+@signal
+class TestSignal(pydantic.BaseModel):
+    message: str = ''
+
+
 @workflow
 def payment_workflow(payment_id: str) -> None:
     raise RuntimeError('Do not call as a workflow')
@@ -24,8 +29,14 @@ def payment_workflow(payment_id: str) -> None:
 @workflow
 def issue_refund(payment_id: str, amount: int) -> str:
     print('Sleeping for 5s')
-    sleep(5)
+    workflow.sleep(3)
+    workflow.sleep(2)
     print('End sleep')
+    for i in range(2):
+        print('Suspending', i+1)
+        signal = workflow.wait(TestSignal)
+        print('Received', repr(signal))
+        print('End of suspend')
 
     if not check_payment_id(payment_id):
         return ''

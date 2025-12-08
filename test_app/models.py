@@ -1,6 +1,6 @@
 import pydantic
 
-from lightemporal.models import UUID
+from lightemporal.core.utils import UUID
 
 
 class Payment(pydantic.BaseModel):
