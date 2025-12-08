@@ -106,6 +106,16 @@ class workflow:
                 return signal_cls.model_validate(signal.content)
             ENV['EXEC'].suspend(workflow_ctx.id)
 
+    @classmethod
+    def on(cls, signal_cls, handler):
+        # register an handler to be executed async when the expected signal is received
+        RUN['EXEC'].on_signal(signal_cls)
+        # -> computes the step for waiting the signal
+        # -> trigger a thread to call handler(wait(signal_cls)) (with step computed at the previous step)
+        # -> return a handler to join the async task / thread
+        # -> may be used as a context manager to unregister handler
+        pass
+
     @staticmethod
     def signal(workflow_id: str, signal):
         repos.signals.new(Signal(
