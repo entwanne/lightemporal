@@ -3,6 +3,8 @@ import inspect
 import time
 from contextlib import contextmanager
 
+import pydantic
+
 from .core.context import ENV
 from .core.utils import SignatureWrapper
 from .models import Workflow, WorkflowStatus, Activity, Signal
@@ -11,9 +13,18 @@ from .repos import Repositories
 repos = Repositories()
 
 
+class WorkflowContext(pydantic.BaseModel):
+    id: str
+    step: int = 0
+
+    def next_step(self):
+        self.step += 1
+        return self.step
+
+
 class workflow:
     instances = []
-    currents = contextvars.ContextVar('current_workflows', default=())
+    _currents = contextvars.ContextVar('current_workflows', default=())
 
     def __init__(self, func):
         self.func = func
@@ -22,6 +33,22 @@ class workflow:
         self.__signature__ = self.sig.signature
 
         self.instances.append(self)
+
+    @classmethod
+    def _current(cls):
+        currents = cls._currents.get()
+        if not currents:
+            raise ValueError('No current workflow')
+        return currents[-1]
+
+    @classmethod
+    def _enter_workflow(cls, workflow):
+        cls._currents.set((*cls._currents.get(), WorkflowContext(id=workflow.id)))
+
+    @classmethod
+    def _exit_workflow(cls, workflow):
+        assert cls._currents.get()[-1].id == workflow.id
+        cls._currents.set(cls._currents.get()[:-1])
 
     def run(self, *args, **kwargs):
         return ENV['RUN'].run(self, *args, **kwargs)
@@ -42,7 +69,7 @@ class workflow:
         print(repr(workflow))
 
         args, kwargs = self.sig.load_input(workflow.input)
-        self.currents.set(self.currents.get() + ({'id': workflow.id, 'step': 0},))
+        self._enter_workflow(workflow)
 
         exc = False
 
@@ -52,8 +79,7 @@ class workflow:
             exc = True
             raise
         finally:
-            assert self.currents.get()[-1]['id'] == workflow.id
-            self.currents.set(self.currents.get()[:-1])
+            self._exit_workflow(workflow)
             if exc:
                 repos.workflows.failed(workflow)
             else:
@@ -72,16 +98,13 @@ class workflow:
     def sleep(duration):
         return _sleep_until(_timestamp_for_duration(duration))
 
-    @staticmethod
-    def wait(signal_cls):
+    @classmethod
+    def wait(cls, signal_cls):
         while True:
-            workflow_ctx = workflow.currents.get()[-1]
-            workflow_id = workflow_ctx['id']
-            workflow_ctx['step'] += 1
-            step = workflow_ctx['step']
-            if signal := repos.signals.may_find_one(workflow_id, signal_cls.__signal_name__, step):
+            workflow_ctx = cls._current()
+            if signal := repos.signals.may_find_one(workflow_ctx.id, signal_cls.__signal_name__, workflow_ctx.next_step()):
                 return signal_cls.model_validate(signal.content)
-            ENV['EXEC'].suspend(workflow_id)
+            ENV['EXEC'].suspend(workflow_ctx.id)
 
     @staticmethod
     def signal(workflow_id: str, signal):
@@ -100,17 +123,13 @@ class activity:
         self.sig = SignatureWrapper.from_function(func)
 
     def __call__(self, *args, **kwargs):
-        if not workflow.currents.get():
-            raise ValueError('No current workflow')
-        workflow_ctx = workflow.currents.get()[-1]
-        workflow_id = workflow_ctx['id']
+        workflow_ctx = workflow._current()
         exc = None
 
         input_str = self.sig.dump_input(*args, **kwargs)
 
-        workflow_ctx['step'] += 1
-        name = f'{self.name}#{workflow_ctx['step']}'
-        activity = repos.activities.may_find_one(workflow_id, name, input_str)
+        name = f'{self.name}#{workflow_ctx.next_step()}'
+        activity = repos.activities.may_find_one(workflow_ctx.id, name, input_str)
         if activity is not None:
             return self.sig.load_output(activity.output)
 
@@ -123,7 +142,7 @@ class activity:
         finally:
             if not exc:
                 output_str = self.sig.dump_output(ret)
-                activity = Activity(workflow_id=workflow_id, name=name, input=input_str, output=output_str)
+                activity = Activity(workflow_id=workflow_ctx.id, name=name, input=input_str, output=output_str)
                 repos.activities.save(activity)
 
 
@@ -134,10 +153,8 @@ def _timestamp_for_duration(duration: int) -> float:
 
 @activity
 def _sleep_until(timestamp: float) -> None:
-    workflow_ctx = workflow.currents.get()[-1]
-    workflow_id = workflow_ctx['id']
     if timestamp > time.time():
-        ENV['EXEC'].suspend_until(workflow_id, timestamp)
+        ENV['EXEC'].suspend_until(workflow._current().id, timestamp)
 
 
 def signal(f):
