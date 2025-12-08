@@ -17,30 +17,29 @@ def run_worker(retry_policy=DEFAULT_POLICY, /, **tasks):
         print('Loaded', name, ':', func)
 
     while True:
-        task_id, func, retry_count, args, kwargs = queue.get(tasks)
-        task_name = get_task_name(func)
-        print(func, args, kwargs)
+        task = queue.get(tasks)
+        print(task.func, task.args, task.kwargs)
 
         try:
-            ret = func(*args, **kwargs)
+            ret = task.func(*task.args, **task.kwargs)
             print(repr(ret))
         except Suspend as e:
             if e.timestamp is None:
-                print(f'{task_name} suspended')
-                queue._postpone(task_id, func, retry_count, args, kwargs)
+                print(f'{task.name} suspended')
+                queue.suspend(task)
             else:
-                print(f'{task_name} suspended for {round(max(e.timestamp - time.time(), 0))}s')
-                queue._call(task_id, func, e.timestamp, retry_count, args, kwargs)
+                print(f'{task.name} suspended for {round(max(e.timestamp - time.time(), 0))}s')
+                queue.put(task.later(timestamp=e.timestamp))
         except retry_policy.error_type as e:
-            print(f'{task_name} failed: {e!r}')
-            if retry_count < retry_policy.max_retries:
-                delay = retry_policy.delay * retry_policy.backoff ** retry_count
+            print(f'{task.name} failed: {e!r}')
+            if task.retry_count < retry_policy.max_retries:
+                delay = retry_policy.delay * retry_policy.backoff ** task.retry_count
                 print(f'Retrying in {delay}s')
-                queue._call(task_id, func, time.time() + delay, retry_count + 1, args, kwargs)
+                queue.put(task.retry(delay=delay))
             else:
-                queue.set_error(task_id, str(e))
+                queue.set_error(task, str(e))
         else:
-            queue.set_result(task_id, func, ret)
+            queue.set_result(task, ret)
 
 
 def run(retry_policy=DEFAULT_POLICY, /, **tasks):

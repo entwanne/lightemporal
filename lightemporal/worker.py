@@ -1,6 +1,7 @@
 import inspect
 import time
 from contextlib import contextmanager
+from functools import cached_property
 
 from .core.context import ENV
 from .tasks.discovery import get_task_name
@@ -17,18 +18,22 @@ class TaskExecution:
 
 
 class TaskRunner:
+    @cached_property
+    def workflow_table(self):
+        return ENV['DB'].tables['tasks.workflows']
+
     def start(self, workflow, *args, **kwargs):
         workflow_id = ENV['Q'].execute(workflow._create, *args, **kwargs)
-        task_id = ENV['Q'].put(workflow._run, workflow_id)
-        ENV['Q'].queue.db.tables['tasks.queues'].set({'id': workflow_id, 'task_id': task_id})
-        return Handler(workflow, workflow_id, task_id)
+        task = ENV['Q'].call(workflow._run, workflow_id)
+        self.workflow_table.set({'id': workflow_id, 'task_id': task.id})
+        return Handler(workflow, workflow_id, task.id)
 
     def run(self, workflow, *args, **kwargs):
         return ENV['Q'].execute(workflow.run, *args, **kwargs)
 
     def wake_up(self, workflow_id):
-        data = ENV['Q'].queue.db.tables['tasks.queues'].get(workflow_id)
-        ENV['Q']._wakeup(data['task_id'])
+        data = self.workflow_table.get(workflow_id)
+        ENV['Q'].wakeup(data['task_id'])
 
 
 class Handler:
@@ -38,7 +43,7 @@ class Handler:
         self.task_id = task_id
 
     def result(self):
-        return ENV['Q'].get_result(self.task_id, self.workflow)
+        return ENV['Q'].get_result(self.workflow, self.task_id)
 
 
 def decorate_workflows():

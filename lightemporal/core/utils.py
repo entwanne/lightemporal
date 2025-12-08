@@ -2,8 +2,13 @@ import inspect
 import time
 from contextlib import contextmanager
 from functools import cached_property
+from typing import Annotated
+from uuid import uuid4
 
 import pydantic
+
+
+UUID = Annotated[str, pydantic.Field(default_factory=lambda: str(uuid4()))]
 
 
 @contextmanager
