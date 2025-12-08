@@ -1,4 +1,5 @@
 import inspect
+import threading
 import time
 from contextlib import contextmanager
 from functools import cached_property
@@ -14,7 +15,31 @@ class TaskExecution:
         raise Suspend(timestamp=timestamp)
 
     def suspend(self, workflow_id):
+        # + should stop signal threads
         raise Suspend
+
+    def on_signal(self, workflow_id, signal_cls, step, handler):
+        parent_env = dict(ENV)
+        # or send target as a task to the queue, that should be handled by the same worker as current one
+        # but how to send handler function?
+        # -> on_signal équivalent au démarrage d'un sous-workflow?
+        # -> l'émission d'un signal serait alors dupliquée pour chacun des workflows enfant
+        # -> permet aussi de régler le problème d'à la fois avoir un .on(signal) et un .wait(signal) -> les deux pourraient alors recevoir le même signal (.on() tournerait en boucle avec une nouvelle step à chaque écoute)
+        # -> ajouter mécanisme de pinning d'un workflow à un worker
+
+        def target():
+            with ENV.new_layer():
+                ENV.update(parent_env)
+
+                for signal in workflow._wait_signal(workflow_id, signal_cls, step):
+                    if signal is None:
+                        time.sleep(0.1)
+                    else:
+                        handler(signal)
+
+        thr = threading.Thread(target=target)
+        thr.start()
+        # self.threads.setdefault(workflow_id, []).append(thr)
 
 
 class TaskRunner:

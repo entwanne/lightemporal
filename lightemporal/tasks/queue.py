@@ -42,7 +42,10 @@ class TaskRepository:
 
     def wakeup(self, task_id):
         with self.suspended.atomic:
-            data = self.suspended.get(task_id)
+            try:
+                data = self.suspended.get(task_id)
+            except KeyError:
+                return
             self.suspended.delete(task_id)
         self.add(Task.model_validate(data))
 

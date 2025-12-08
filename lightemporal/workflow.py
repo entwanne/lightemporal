@@ -98,23 +98,33 @@ class workflow:
     def sleep(duration):
         return _sleep_until(_timestamp_for_duration(duration))
 
+    @staticmethod
+    def _wait_signal(workflow_id, signal_cls, step):
+        while True:
+            if signal := repos.signals.may_find_one(workflow_id, signal_cls.__signal_name__, step):
+                yield signal_cls.model_validate(signal.content)
+                return
+            yield
+
     @classmethod
     def wait(cls, signal_cls):
-        while True:
-            workflow_ctx = cls._current()
-            if signal := repos.signals.may_find_one(workflow_ctx.id, signal_cls.__signal_name__, workflow_ctx.next_step()):
-                return signal_cls.model_validate(signal.content)
-            ENV['EXEC'].suspend(workflow_ctx.id)
+        workflow_ctx = cls._current()
+        for signal in cls._wait_signal(workflow_ctx.id, signal_cls, workflow_ctx.next_step()):
+            if signal is None:
+                ENV['EXEC'].suspend(workflow_ctx.id)
+            else:
+                return signal
 
     @classmethod
     def on(cls, signal_cls, handler):
         # register an handler to be executed async when the expected signal is received
-        RUN['EXEC'].on_signal(signal_cls)
+        workflow_ctx = cls._current()
+        step = workflow_ctx.next_step()
+        ENV['EXEC'].on_signal(workflow_ctx.id, signal_cls, step, handler)
         # -> computes the step for waiting the signal
         # -> trigger a thread to call handler(wait(signal_cls)) (with step computed at the previous step)
         # -> return a handler to join the async task / thread
         # -> may be used as a context manager to unregister handler
-        pass
 
     @staticmethod
     def signal(workflow_id: str, signal):

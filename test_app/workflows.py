@@ -26,8 +26,13 @@ def payment_workflow(payment_id: str) -> None:
     raise RuntimeError('Do not call as a workflow')
 
 
+def handle_signal(sig):
+    print('Handled:', repr(sig))
+
+
 @workflow
 def issue_refund(payment_id: str, amount: int) -> str:
+    workflow.on(TestSignal, handle_signal)
     print('Sleeping for 5s')
     workflow.sleep(3)
     workflow.sleep(2)

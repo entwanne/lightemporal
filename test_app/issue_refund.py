@@ -1,6 +1,6 @@
 import sys
 
-from .workflows import issue_refund
+from .workflows import TestSignal, issue_refund
 
 payment_id, amount = sys.argv[1], int(sys.argv[2])
 env = sys.argv[3] if len(sys.argv) > 3 else 'task'
@@ -31,7 +31,7 @@ match env:
                         if stopped:
                             break
                         print('signal')
-                        workflow.signal(handler.workflow_id, 'test_signal')
+                        workflow.signal(handler.workflow_id, TestSignal(message='test'))
 
             print(handler)
             thr = threading.Thread(target=setter)

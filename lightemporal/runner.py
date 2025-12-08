@@ -13,6 +13,9 @@ class DirectExecution:
     def suspend(self, workflow_id):
         raise RuntimeError('Cannot suspend sync workflow')
 
+    def on_signal(self, workflow_id, signal_cls, step, handler):
+        raise RuntimeError('Sync workflow cannot receive signals')
+
 
 class DirectRunner:
     def start(self, workflow, *args, **kwargs):
@@ -35,6 +38,9 @@ class ThreadExecution(DirectExecution):
         evt = self.events[workflow_id]
         evt.clear()
         evt.wait()
+
+    def on_signal(self, workflow_id, signal_cls, step, handler):
+        pass
 
 
 class ThreadRunner:
