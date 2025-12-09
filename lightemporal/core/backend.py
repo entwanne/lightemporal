@@ -46,11 +46,13 @@ class Backend:
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.connection.close()
 
-    def declare_table(self, name, model_cls):
+    def declare_table(self, name, model_cls, *indexes):
         with self.cursor(commit=True) as cursor:
             struct = ', '.join(model_cls.model_fields)
             cursor.execute(f'CREATE TABLE IF NOT EXISTS {name} ({struct})')
             cursor.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS ux_{name}_id ON {name}(id)')
+            for index in indexes:
+                cursor.execute(index)
 
     def execute(self, req, data=(), commit=False):
         with self.cursor(commit=commit) as cursor:

@@ -10,7 +10,7 @@ class PaymentRepository:
     def __init__(self, db):
         self.db = db
         db.declare_table('payments', Payment)
-        db.declare_table('refunds', Refund)
+        RefundRepository(db)
 
     def list(self) -> Iterable[Payment]:
         yield from self.db.query('SELECT * FROM payments', model=Payment)
