@@ -47,7 +47,7 @@ def issue_refund(payment_id: str, amount: int) -> str:
 @workflow
 def apply_refund(refund_id: str) -> int:
     print('Sleeping for 5s')
-    sleep(5)
+    workflow.sleep(5)
     print('End sleep')
 
     payment_id = get_payment_id(refund_id)
