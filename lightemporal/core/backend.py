@@ -1,137 +1,91 @@
-import heapq
-import json
+import contextvars
+import sqlite3
 import time
 from contextlib import contextmanager
 from functools import cache, cached_property
 from pathlib import Path
 
+import pydantic
+
 from .context import ENV
-from .lock import FileLock
-from .utils import repeat_if_needed
+
+
+def dict_factory(cursor, row):
+    fields = [column[0] for column in cursor.description]
+    return {key: value for key, value in zip(fields, row)}
 
 
 class Backend:
     def __init__(self, path='lightemporal.db'):
         self.path = Path(path)
-        self._lock = FileLock(self.path.with_name(self.path.name + '.lock'), reentrant=True)
+        self.connection = None
+        self._cursor = contextvars.ContextVar('_cursor', default=None)
 
-        self._tables = None
+    @contextmanager
+    def cursor(self, commit=False):
+        cursor = self._cursor.get()
+        if cursor is not None:
+            yield cursor
+            return
 
-    def reload(self):
-        with self._lock:
-            if not self.path.exists():
-                if not self.path.exists():
-                    self.path.write_text('{}')
-            with self.path.open() as f:
-                self._tables = json.load(f)
+        try:
+            cursor = self.connection.cursor()
+            self._cursor.set(cursor)
+            yield cursor
+        finally:
+            if commit:
+                self.connection.commit()
+            cursor.close()
+            self._cursor.set(None)
 
-    def commit(self):
-        with self._lock:
-            with self.path.open('w') as f:
-                json.dump(self._tables, f)
+    def __enter__(self):
+        self.connection = sqlite3.connect(self.path)
+        self.connection.row_factory = dict_factory
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.connection.close()
+
+    def declare_table(self, name, model_cls):
+        with self.cursor(commit=True) as cursor:
+            struct = ', '.join(model_cls.model_fields)
+            cursor.execute(f'CREATE TABLE IF NOT EXISTS {name} ({struct})')
+            cursor.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS ux_{name}_id ON {name}(id)')
+
+    def execute(self, req, data=(), commit=False):
+        with self.cursor(commit=commit) as cursor:
+            if isinstance(data, pydantic.BaseModel):
+                data = data.model_dump(mode='json')
+
+            cursor.execute(req, data)
+
+    def query_one(self, req, *args, model=None, commit=False):
+        with self.cursor(commit=commit) as cursor:
+            self.execute(req, *args)
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError
+
+        if model is not None:
+            row = model.model_validate(row)
+        return row
+
+    def query(self, req, *args, model=None, commit=False):
+        with self.cursor(commit=commit) as cursor:
+            self.execute(req, *args)
+            while True:
+                row = cursor.fetchone()
+                if row is None:
+                    break
+
+                if model is not None:
+                    row = model.model_validate(row)
+                yield row
 
     @property
     @contextmanager
     def atomic(self):
-        with self._lock:
-            try:
-                self.reload()
-                yield
-            finally:
-                self.commit()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        self._tables = None
-
-    @cached_property
-    def tables(self):
-        return TableView(self)
-
-    @cached_property
-    def queues(self):
-        return QueueView(self)
-
-
-class TableView:
-    def __init__(self, db):
-        self.db = db
-
-    @cache
-    def __getitem__(self, name):
-        return Table(self.db, name)
-
-
-class QueueView:
-    def __init__(self, db):
-        self.db = db
-
-    @cache
-    def __getitem__(self, name):
-        return Queue(self.db, name)
-
-
-class _Table:
-    def __init__(self, db, name):
-        self.db = db
-        self.name = name
-
-    @property
-    def reload(self):
-        return self.db.reload
-
-    @property
-    def commit(self):
-        return self.db.commit
-
-    @property
-    def atomic(self):
-        return self.db.atomic
-
-
-class Table(_Table):
-    def get(self, id):
-        self.db.reload()
-        return self.db._tables.get(self.name, {})[id]
-
-    def list(self, **filters):
-        self.db.reload()
-        for row in self.db._tables.get(self.name, {}).values():
-            if all(row.get(key) == value for key, value in filters.items()):
-                yield row
-
-    def set(self, row):
-        with self.db.atomic:
-            self.db._tables.setdefault(self.name, {})[row['id']] = row
-
-    def delete(self, id):
-        with self.db.atomic:
-            del self.db._tables.setdefault(self.name, {})[id]
-
-
-class Queue(_Table):
-    def get_if(self, condition, blocking=True):
-        for repeat_ctx in repeat_if_needed(
-                exc_type=IndexError,
-                blocking=blocking,
-                error=ValueError('Queue is empty'),
-        ):
-            with repeat_ctx, self.db.atomic:
-                queue = self.db._tables.setdefault(self.name, [])
-                if condition(queue[0]):
-                    return queue.pop(0)
-
-    def get(self, blocking=True):
-        return self.get_if(lambda item: True, blocking=blocking)
-
-    def put(self, value):
-        with self.db.atomic:
-            heapq.heappush(
-                self.db._tables.setdefault(self.name, []),
-                value,
-            )
+        yield
 
 
 ENV.add_context('DB', Backend())

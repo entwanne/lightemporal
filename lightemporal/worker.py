@@ -19,20 +19,29 @@ class TaskExecution:
 
 class TaskRunner:
     @cached_property
-    def workflow_table(self):
-        return ENV['DB'].tables['tasks.workflows']
+    def db(self):
+        db = ENV['DB']
+        db.execute('CREATE TABLE IF NOT EXISTS tasks_workflows (id, task_id)', commit=True)
+        return db
 
     def start(self, workflow, *args, **kwargs):
         workflow_id = ENV['Q'].execute(workflow._create, *args, **kwargs)
         task = ENV['Q'].call(workflow._run, workflow_id)
-        self.workflow_table.set({'id': workflow_id, 'task_id': task.id})
+        self.db.execute(
+            'INSERT INTO tasks_workflows VALUES (?, ?)',
+            (workflow_id, task.id),
+            commit=True,
+        )
         return Handler(workflow, workflow_id, task.id)
 
     def run(self, workflow, *args, **kwargs):
         return ENV['Q'].execute(workflow.run, *args, **kwargs)
 
     def wake_up(self, workflow_id):
-        data = self.workflow_table.get(workflow_id)
+        data = self.db.query_one(
+            'SELECT task_id FROM tasks_workflows WHERE id = ?',
+            (workflow_id,)
+        )
         ENV['Q'].wakeup(data['task_id'])
 
 

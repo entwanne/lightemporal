@@ -28,37 +28,68 @@ class TaskResult(pydantic.BaseModel):
 
 class TaskRepository:
     def __init__(self, db, queue_id):
-        self.queue = db.queues[f'queue.{queue_id}']
-        self.suspended = db.tables[f'suspended.{queue_id}']
-        self.results = db.tables[f'results.{queue_id}']
+        self.db = db
+        # + handle queue id
+        db.declare_table('queue', Task)
+        db.declare_table('suspended', Task)
+        db.declare_table('results', TaskResult)
 
     def add(self, task):
-        row = task.model_dump(mode='json')
-        timestamp = row.pop('timestamp')
-        self.queue.put([timestamp, row])
+        self.db.execute(
+            "INSERT INTO queue VALUES (:id, :name, :timestamp, :retry_count, :input)",
+            task,
+            commit=True,
+        )
 
     def suspend(self, task):
-        self.suspended.set(task.model_dump(mode='json'))
+        self.db.execute(
+            "INSERT INTO suspended VALUES (:id, :name, :timestamp, :retry_count, :input)",
+            task,
+            commit=True,
+        )
 
     def wakeup(self, task_id):
-        with self.suspended.atomic:
-            data = self.suspended.get(task_id)
-            self.suspended.delete(task_id)
-        self.add(Task.model_validate(data))
+        with self.db.atomic:
+            task = self.db.query_one(
+                "DELETE FROM suspended WHERE id = ? RETURNING *",
+                (task_id,),
+                commit=True,
+                model=Task,
+            )
+        self.add(task)
 
     def get_next_task(self):
-        timestamp, row = self.queue.get_if(lambda item: item[0] <= time.time())
-        return Task.model_validate({**row, 'timestamp': timestamp})
+        for repeat_ctx in repeat_if_needed():
+            with repeat_ctx:
+                for row in self.db.query(
+                        "DELETE FROM queue WHERE timestamp < ? RETURNING *",
+                        (time.time(),),
+                        commit=True,
+                        model=Task,
+                ):
+                    return row
 
     def get_result(self, task_id, blocking=True):
-        for repeat_ctx in repeat_if_needed(exc_type=KeyError, blocking=blocking):
-            with repeat_ctx, self.results.atomic:
-                result = self.results.get(task_id)
-                self.results.delete(task_id)
-                return TaskResult.model_validate(result)
+        for repeat_ctx in repeat_if_needed(exc_type=ValueError, blocking=blocking):
+            with repeat_ctx:
+                return self.db.query_one(
+                    "DELETE FROM results WHERE id = ? RETURNING *",
+                    (task_id,),
+                    commit=True,
+                    model=TaskResult,
+                )
 
     def set_result(self, task_result):
-        self.results.set(task_result.model_dump(mode='json'))
+        self.db.execute(
+            """
+            INSERT INTO results
+            VALUES (:id, :result, :error)
+            ON CONFLICT (id) DO UPDATE
+            SET result = :result, error = :error
+            """,
+            task_result,
+            commit=True,
+        )
 
 
 class TaskFunction(pydantic.BaseModel):

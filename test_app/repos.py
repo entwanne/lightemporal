@@ -8,57 +8,88 @@ from .models import Payment, Refund
 
 class PaymentRepository:
     def __init__(self, db):
-        self.payment_db = db.tables['payments']
-        self.refund_db = db.tables['refunds']
+        self.db = db
+        db.declare_table('payments', Payment)
+        db.declare_table('refunds', Refund)
 
     def list(self) -> Iterable[Payment]:
-        for row in self.payment_db.list():
-            yield Payment.model_validate(row)
+        yield from self.db.query('SELECT * FROM payments', model=Payment)
 
     def get(self, id: str) -> Payment:
-        return Payment.model_validate(self.payment_db.get(id))
+        return self.db.query_one('SELECT * FROM payments WHERE id = ?', (id,), model=Payment)
 
     def create(self, **kwargs) -> Payment:
-        payment = Payment(**kwargs)
-        self.payment_db.set(payment.model_dump(mode='json'))
-        return payment
+        return self.db.query_one(
+            'INSERT INTO payments VALUES (:id, :amount) RETURNING *',
+            Payment(**kwargs),
+            commit=True,
+            model=Payment,
+        )
 
     def get_refundable_amount(self, id: str) -> int:
-        payment = self.get(id)
-        refunded_amount = sum(r['requested_amount'] for r in self.refund_db.list(payment_id=id))
-        return max(payment.amount - refunded_amount, 0)
+        return self.db.query_one(
+            """
+            SELECT amount - coalesce((SELECT SUM(requested_amount) FROM refunds WHERE payment_id = :id), 0) AS amount
+            FROM payments
+            WHERE id = :id
+            """,
+            (id,),
+        )['amount']
 
     def get_rebatable_amount(self, id: str) -> int:
-        payment = self.get(id)
-        rebatable_amount = payment.amount // 3
-        rebated_amount = sum(r['rebate_amount'] for r in self.refund_db.list(payment_id=id))
-        return max(rebatable_amount - rebated_amount, 0)
+        return self.db.query_one(
+            """
+            SELECT amount/3 - coalesce((SELECT SUM(rebate_amount) FROM refunds WHERE payment_id = :id), 0) AS amount
+            FROM payments
+            WHERE id = :id
+            """,
+            (id,),
+        )['amount']
 
     def get_returnable_amount(self, id: str) -> int:
-        payment = self.get(id)
-        returnable_amount = payment.amount - payment.amount // 3
-        returned_amount = sum(r['return_amount'] for r in self.refund_db.list(payment_id=id))
-        return max(returnable_amount - returned_amount, 0)
+        return self.db.query_one(
+            """
+            SELECT amount - amount/3 - coalesce((SELECT SUM(return_amount) FROM refunds WHERE payment_id = :id), 0) AS amount
+            FROM payments
+            WHERE id = :id
+            """,
+            (id,),
+        )['amount']
 
 
 class RefundRepository:
     def __init__(self, db):
-        self.db = db.tables['refunds']
+        self.db = db
+        db.declare_table('refunds', Refund)
 
     def list_for_payment(self, payment: Payment) -> Iterable[Refund]:
-        for row in self.db.list(payment_id=payment.id):
-            yield Refund.model_validate(row)
+        yield from self.db.query(
+            'SELECT * FROM refunds WHERE payment_id = :id',
+            payment,
+            model=Refund,
+        )
 
     def get(self, id: str) -> Refund:
-        return Refund.model_validate(self.db.get(id))
+        return self.db.query_one(
+            'SELECT * FROM refunds WHERE id = ?',
+            (id,),
+            model=Refund,
+        )
 
     def create(self, payment: Payment, requested_amount: int = 0) -> Refund:
-        refund = Refund(payment_id=payment.id, requested_amount=requested_amount)
-        self.db.set(refund.model_dump(mode='json'))
-        return refund
+        return self.db.query_one(
+            'INSERT INTO refunds VALUES (:payment_id, :id, :requested_amount, :rebate_amount, :return_amount) RETURNING *',
+            Refund(payment_id=payment.id, requested_amount=requested_amount),
+            commit=True,
+            model=Refund,
+        )
 
     def update(self, refund: Refund):
-        self.db.set(refund.model_dump(mode='json'))
+        self.db.execute(
+            'UPDATE refunds SET requested_amount = :requested_amount, rebate_amount = :rebate_amount, return_amount = :return_amount WHERE id = :id',
+            refund,
+            commit=True,
+        )
 
 
 class Repositories:

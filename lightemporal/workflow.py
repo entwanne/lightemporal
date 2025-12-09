@@ -103,7 +103,7 @@ class workflow:
         while True:
             workflow_ctx = cls._current()
             if signal := repos.signals.may_find_one(workflow_ctx.id, signal_cls.__signal_name__, workflow_ctx.next_step()):
-                return signal_cls.model_validate(signal.content)
+                return signal_cls.model_validate_json(signal.content)
             ENV['EXEC'].suspend(workflow_ctx.id)
 
     @staticmethod
@@ -111,7 +111,7 @@ class workflow:
         repos.signals.new(Signal(
             workflow_id=workflow_id,
             name=type(signal).__signal_name__,
-            content=signal.model_dump(mode='json'),
+            content=signal.model_dump_json(),
         ))
         ENV['RUN'].wake_up(workflow_id)
 
