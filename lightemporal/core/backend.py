@@ -28,12 +28,19 @@ class Backend:
             yield cursor
             return
 
+        has_error = False
+
         try:
             cursor = self.connection.cursor()
             self._cursor.set(cursor)
             yield cursor
+        except Exception:
+            has_error = True
+            raise
         finally:
-            if commit:
+            if has_error:
+                self.connection.rollback()
+            elif commit:
                 self.connection.commit()
             cursor.close()
             self._cursor.set(None)
