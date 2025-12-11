@@ -91,10 +91,5 @@ class Backend:
                     row = model.model_validate(row)
                 yield row
 
-    @property
-    @contextmanager
-    def atomic(self):
-        yield
-
 
 ENV.add_context('DB', Backend())

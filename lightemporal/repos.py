@@ -10,7 +10,7 @@ class WorkflowRepository:
         db.declare_table('workflows', Workflow)
 
     def get_or_create(self, name: str, input: str, ok_stopped: bool = True) -> Workflow:
-        with self.db.atomic:
+        with self.db.cursor(commit=True):
             wrong_statuses = ('RUNNING', 'RUNNING') if ok_stopped else ('RUNNING', 'STOPPED')
             for _ in self.db.query(
                     """
@@ -34,7 +34,6 @@ class WorkflowRepository:
                     """,
                     (name, input),
                     model=Workflow,
-                    commit=True,
             ):
                 return row
 
@@ -42,7 +41,6 @@ class WorkflowRepository:
                 "INSERT INTO workflows VALUES (:id, :name, :input, :status) RETURNING *",
                 Workflow(name=name, input=input),
                 model=Workflow,
-                commit=True,
             )
 
     def get(self, workflow_id: str) -> Workflow:
@@ -105,7 +103,7 @@ class SignalRepository:
         )
 
     def may_find_one(self, workflow_id: str, name: str, step: int) -> Signal | None:
-        with self.db.atomic:
+        with self.db.cursor(commit=True):
             data = {'workflow_id': workflow_id, 'name': name, 'step': step}
 
             for row in self.db.query(
@@ -128,7 +126,6 @@ class SignalRepository:
                     """,
                     data,
                     model=Signal,
-                    commit=True,
             ):
                 return row
 
