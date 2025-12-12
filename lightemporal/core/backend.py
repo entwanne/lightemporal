@@ -42,11 +42,15 @@ class Backend:
                 self.connection.rollback()
             elif commit:
                 self.connection.commit()
-            cursor.close()
+            try:
+                cursor.close()
+            except sqlite3.ProgrammingError:
+                pass
+
             self._cursor.set(None)
 
     def __enter__(self):
-        self.connection = sqlite3.connect(self.path)
+        self.connection = sqlite3.connect(self.path, autocommit=False)
         self.connection.row_factory = dict_factory
         return self
 
