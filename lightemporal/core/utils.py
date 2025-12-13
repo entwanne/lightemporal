@@ -18,6 +18,8 @@ def _repeat_context(loop):
     except loop.exc_type as e:
         if loop.error is None:
             loop.error = e
+        else:
+            loop.error.__cause__ = e
 
 
 class repeat_if_needed:
