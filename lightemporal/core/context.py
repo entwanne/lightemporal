@@ -57,8 +57,9 @@ class _ContextLayer:
         self.stack.__enter__()
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        self.stack.__exit__(exc_type, exc_value, exc_tb)
+        ret = self.stack.__exit__(exc_type, exc_value, exc_tb)
         self.context._map.set(self.context._map.get().parents)
+        return ret
 
     def add_context(self, name, ctx):
         self.mapping[name] = self.stack.enter_context(ctx)
