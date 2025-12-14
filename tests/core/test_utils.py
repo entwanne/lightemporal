@@ -1,3 +1,4 @@
+import inspect
 import time
 import uuid
 
@@ -196,4 +197,10 @@ def test_repeat_if_needed(monkeypatch):
 
 
 def test_signature_wrapper():
-    assert False
+    def func(pos_only1: int, pos_only2: str, /, pos_or_kwargs1: str, pos_or_kwarg2: list[int], *, kw_only1: tuple[float, str], kw_only2: dict[str, str]) -> tuple[str, list[int]]:
+        pass
+
+    sig = SignatureWrapper.from_function(func)
+    assert sig.signature == inspect.signature(func)
+
+    assert sig.dump_input() == ''
