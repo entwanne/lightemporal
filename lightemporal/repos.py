@@ -9,15 +9,14 @@ class WorkflowRepository:
         self.db = db
         db.declare_table('workflows', Workflow)
 
-    def get_or_create(self, name: str, input: str, ok_stopped: bool = True) -> Workflow:
+    def get_or_create(self, name: str, input: str) -> Workflow:
         with self.db.cursor(commit=True):
-            wrong_statuses = ('RUNNING', 'RUNNING') if ok_stopped else ('RUNNING', 'STOPPED')
             for _ in self.db.query(
                     """
                     SELECT 1 FROM workflows
-                    WHERE name = ? AND input = ? AND status IN (?, ?)
+                    WHERE name = ? AND input = ? AND status = 'RUNNING'
                     """,
-                    (name, input, *wrong_statuses),
+                    (name, input),
             ):
                 raise ValueError('Workflow is already running')
 
