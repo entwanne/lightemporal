@@ -80,6 +80,7 @@ class SignatureWrapper:
 
     def dump_input(self, *args, **kwargs) -> str:
         bound = self.signature.bind(*args, **kwargs)
+        bound.apply_defaults()
         args, kwargs = bound.args, bound.kwargs
         kwargs = self.kwargs_model(**kwargs)
         return self.input_adapter.dump_json((args, kwargs)).decode()
